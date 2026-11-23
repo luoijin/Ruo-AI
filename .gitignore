@@ -1,0 +1,49 @@
+# Env and secrets
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+keystore.properties
+local.properties
+google-services.json
+service-account*.json
+
+# Android / Gradle
+.gradle/
+build/
+*.apk
+*.aab
+*.iml
+.cxx/
+captures/
+
+# Rust
+target/
+**/*.rs.bk
+
+# Generated UniFFI bindings and native libs
+android/core/rustbridge/src/main/jniLibs/
+android/core/rustbridge/src/main/java/uniffi/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local databases and data
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+infra/data/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
