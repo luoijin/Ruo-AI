@@ -29,6 +29,7 @@ android/core/rustbridge/src/main/java/uniffi/
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
 .pytest_cache/
