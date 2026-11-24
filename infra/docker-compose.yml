@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ruo_password}
       POSTGRES_DB: ${POSTGRES_DB:-ruo_db}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -28,6 +28,16 @@ services:
         condition: service_healthy
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ruo_user}:${POSTGRES_PASSWORD:-ruo_password}@db:5432/${POSTGRES_DB:-ruo_db}
+      SYNC_DATABASE_URL: postgresql://${POSTGRES_USER:-ruo_user}:${POSTGRES_PASSWORD:-ruo_password}@db:5432/${POSTGRES_DB:-ruo_db}
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     ports:
       - "8000:8000"
 

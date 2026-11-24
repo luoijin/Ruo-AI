@@ -1,13 +1,21 @@
+import asyncio
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 
 from app.auth.service import create_access_token, hash_token
-from app.core.config import settings
+from app.core.config import (
+    DEV_GOOGLE_CLIENT_ID_PLACEHOLDER,
+    DEV_JWT_SECRET_PLACEHOLDER,
+    Settings,
+    settings,
+)
 from app.core.database import async_session_maker
+from app.core.errors import AppException
 from app.main import app
 from app.models.all_models import EmailOtp, Invite, UsageLog, User
 from app.providers.base import ChatRequest
@@ -272,28 +280,135 @@ async def test_quota_exceeded_and_sse_error(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_quota_requests():
-    # Test quota increments across requests
-    user_id = f"user_concurrent_{uuid.uuid4().hex[:6]}"
+async def test_concurrent_quota_first_request_of_day():
+    # Test concurrent requests on a brand new user with no usage row yet
+    user_id = f"user_first_{uuid.uuid4().hex[:6]}"
     async with async_session_maker() as session:
         user = User(id=user_id, email=f"{user_id}@example.com")
         session.add(user)
         await session.commit()
 
-    for _ in range(5):
+    async def single_increment():
         async with async_session_maker() as session:
-            await check_and_increment_quota(session, user_id=user_id, tokens_in=10, tokens_out=20)
+            return await check_and_increment_quota(session, user_id=user_id, tokens_in=10, tokens_out=20)
+
+    # 5 concurrent first-time requests
+    results = await asyncio.gather(*[single_increment() for _ in range(5)])
+    assert len(results) == 5
 
     async with async_session_maker() as session:
         today = datetime.now(UTC).date()
-        from sqlalchemy import select
-
         res = await session.execute(select(UsageLog).where(UsageLog.user_id == user_id, UsageLog.usage_date == today))
         log = res.scalars().first()
         assert log is not None
         assert log.request_count == 5
         assert log.tokens_in == 50
         assert log.tokens_out == 100
+
+
+@pytest.mark.asyncio
+async def test_concurrent_quota_boundary_race_never_over_allows():
+    # Set up user at limit - 1 (e.g. 39 / 40)
+    user_id = f"user_boundary_{uuid.uuid4().hex[:6]}"
+    async with async_session_maker() as session:
+        user = User(id=user_id, email=f"{user_id}@example.com")
+        session.add(user)
+        today = datetime.now(UTC).date()
+        log = UsageLog(
+            user_id=user_id,
+            usage_date=today,
+            request_count=settings.DAILY_MESSAGE_QUOTA - 1,
+            tokens_in=100,
+            tokens_out=200,
+        )
+        session.add(log)
+        await session.commit()
+
+    async def attempt_increment():
+        async with async_session_maker() as session:
+            try:
+                await check_and_increment_quota(session, user_id=user_id, tokens_in=5, tokens_out=10)
+                return "ALLOWED"
+            except AppException as e:
+                if e.status_code == 429 and e.code == "QUOTA_EXCEEDED":
+                    return "REJECTED_429"
+                raise
+
+    # 10 concurrent requests racing for the final available slot
+    outcomes = await asyncio.gather(*[attempt_increment() for _ in range(10)])
+
+    allowed_count = outcomes.count("ALLOWED")
+    rejected_count = outcomes.count("REJECTED_429")
+
+    # Boundary rule: Exactly one request must succeed, all others must receive 429
+    assert allowed_count == 1, f"Expected exactly 1 request to be allowed, but got {allowed_count}"
+    assert rejected_count == 9, f"Expected 9 requests to be rejected with 429, but got {rejected_count}"
+
+    # Confirm in database that request_count equals exactly the limit and never exceeded it
+    async with async_session_maker() as session:
+        res = await session.execute(select(UsageLog).where(UsageLog.user_id == user_id, UsageLog.usage_date == today))
+        final_log = res.scalars().first()
+        assert final_log is not None
+        assert final_log.request_count == settings.DAILY_MESSAGE_QUOTA, (
+            f"Expected request_count to be {settings.DAILY_MESSAGE_QUOTA}, got {final_log.request_count}"
+        )
+
+    # Any subsequent request must immediately fail with 429
+    async with async_session_maker() as session:
+        with pytest.raises(AppException) as exc_info:
+            await check_and_increment_quota(session, user_id=user_id)
+        assert exc_info.value.status_code == 429
+        assert exc_info.value.code == "QUOTA_EXCEEDED"
+
+
+def test_production_settings_validation():
+    # 1. In production, default dev placeholders must be refused
+    with pytest.raises(ValueError, match="JWT_SECRET_KEY must be set to a secure secret"):
+        Settings(
+            ENVIRONMENT="production",
+            JWT_SECRET_KEY=DEV_JWT_SECRET_PLACEHOLDER,
+            GOOGLE_CLIENT_ID="valid-google-client-id-123456",
+        )
+
+    # 2. In production, empty string JWT_SECRET_KEY must not fall back to dev placeholder; must be refused
+    with pytest.raises(ValueError, match="JWT_SECRET_KEY must be set to a secure secret"):
+        Settings(
+            ENVIRONMENT="production",
+            JWT_SECRET_KEY="",
+            GOOGLE_CLIENT_ID="valid-google-client-id-123456",
+        )
+
+    # 3. In production, short JWT_SECRET_KEY (< 32 chars) must be refused
+    with pytest.raises(ValueError, match="at least 32 characters long"):
+        Settings(
+            ENVIRONMENT="production",
+            JWT_SECRET_KEY="short-secret-key-under-32-chars",
+            GOOGLE_CLIENT_ID="valid-google-client-id-123456",
+        )
+
+    # 4. In production, placeholder GOOGLE_CLIENT_ID must be refused
+    with pytest.raises(ValueError, match="GOOGLE_CLIENT_ID must be configured"):
+        Settings(
+            ENVIRONMENT="production",
+            JWT_SECRET_KEY="a-very-secure-secret-key-that-is-at-least-32-characters-long",
+            GOOGLE_CLIENT_ID=DEV_GOOGLE_CLIENT_ID_PLACEHOLDER,
+        )
+
+    # 5. In production, empty GOOGLE_CLIENT_ID must be refused
+    with pytest.raises(ValueError, match="GOOGLE_CLIENT_ID must be configured"):
+        Settings(
+            ENVIRONMENT="production",
+            JWT_SECRET_KEY="a-very-secure-secret-key-that-is-at-least-32-characters-long",
+            GOOGLE_CLIENT_ID="",
+        )
+
+    # 6. Valid production settings must succeed
+    prod_settings = Settings(
+        ENVIRONMENT="production",
+        JWT_SECRET_KEY="a-very-secure-secret-key-that-is-at-least-32-characters-long",
+        GOOGLE_CLIENT_ID="valid-google-client-id-123456",
+    )
+    assert prod_settings.ENVIRONMENT == "production"
 
 
 @pytest.mark.asyncio

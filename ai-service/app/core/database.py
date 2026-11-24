@@ -2,13 +2,17 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
+engine_kwargs = {"echo": False, "future": True}
+if settings.ENVIRONMENT == "test":
+    engine_kwargs["poolclass"] = NullPool
+
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=False,
-    future=True,
+    **engine_kwargs,
 )
 
 async_session_maker = async_sessionmaker(

@@ -33,6 +33,10 @@ dev = [
     "greenlet>=3.0.0",
 ]
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"

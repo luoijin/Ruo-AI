@@ -11,7 +11,7 @@ Update the Status column (Open / Verified + date + source). Never record a fact 
 | # | Item | How to verify | Needed by | Status |
 |---|---|---|---|---|
 | V1 | Is the main Gemini model on the free tier; actual per-minute and per-day limits for each model used | Google AI Studio rate-limit page | Phase 1 | Open |
-| V2 | Exact model names: chat, lighter fallback, transcription, embeddings | AI Studio model list | Phase 1 / 3 / 4 | Verified 2026-11-23: `gemini-4-hydrogen` exists. Fallback model configurable (default: `gemini-1.5-flash` UNVERIFIED). |
+| V2 | Exact model names: chat, lighter fallback, transcription, embeddings | AI Studio model list | Phase 1 / 3 / 4 | Verified 2026-11-23: `gemini-4-hydrogen` exists. Fallback model configurable via `GEMINI_FALLBACK_MODEL` with no invented default (UNVERIFIED / unconfigured). |
 | V3 | Embedding dimension | Model docs; confirm before creating `document_chunks` | Phase 3 | Open |
 | V4 | Free hosting and Postgres terms: card required, idle sleep, RAM/CPU, storage | Each provider's current pricing and terms pages | Phase 3 | Open |
 | V5 | Versions: Rust, UniFFI, cargo-ndk, SQLCipher binding | crates.io, project READMEs | Phase 1 | **Verified 2026-11-24**: Host rustc 1.100.0, uniffi 0.28.3 installed via Cargo, crates.io latest uniffi 0.32.2 (source: `cargo info uniffi`), rusqlite 0.31.0 installed (latest 0.43.0, source: `cargo info rusqlite`). SQLCipher requires OpenSSL C headers (`OPENSSL_DIR`), which fails on Windows host without MSVC OpenSSL dev package; Android NDK SQLCipher + OpenSSL build remains UNVERIFIED. |
