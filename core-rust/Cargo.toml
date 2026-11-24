@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "ruo_core",
+]
+resolver = "2"

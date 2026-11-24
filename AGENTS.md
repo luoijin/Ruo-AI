@@ -53,16 +53,17 @@ Ruo AI is an Android-only AI assistant (students, self-learners; bilingual users
 ## Command cheat sheet (fill in once code exists)
 | Task | Command |
 |---|---|
-| Start backend stack | `TODO: docker compose -f infra/docker-compose.yml up` |
-| Backend tests | `TODO: pytest (in ai-service/)` |
-| Backend lint | `TODO` |
-| Rust tests | `TODO: cargo test (in core-rust/)` |
-| Build Rust for Android | `TODO: cargo ndk ...` |
-| Generate UniFFI bindings | `TODO` |
-| Android build | `TODO: ./gradlew assembleDebug` |
-| Android tests | `TODO: ./gradlew test` |
-| Migrations | `TODO: alembic upgrade head` |
-| Run evals | `TODO` |
+| Start backend stack | `docker compose -f infra/docker-compose.yml up` |
+| Backend tests | `pytest (in ai-service/)` |
+| Backend lint | `ruff check . && ruff format --check . (in ai-service/)` |
+| Rust tests | `cargo test (in core-rust/)` |
+| Rust lint | `cargo clippy --all-targets (in core-rust/)` |
+| Build Rust for Android | `TODO: cargo ndk ... (Phase 1 Stage B)` |
+| Generate UniFFI bindings | `TODO: uniffi-bindgen ... (Phase 1 Stage B)` |
+| Android build | `TODO: ./gradlew assembleDebug (Phase 1 Stage B)` |
+| Android tests | `TODO: ./gradlew test (Phase 1 Stage B)` |
+| Migrations | `alembic upgrade head (in ai-service/)` |
+| Run evals | `TODO: pytest evals/ (Phase 1 Stage D)` |
 
 ## Escalation: stop and ask the owner when
 - A locked decision, the API contract or the data model must change.

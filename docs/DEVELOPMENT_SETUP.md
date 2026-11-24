@@ -9,7 +9,38 @@
 ## Constraints
 Laptop has limited free disk (about 80 GB). Therefore: **physical Android phone, no emulator images**; one SDK platform; trimmed toolchain; one Rust ABI (arm64-v8a) at first. Versions: take them from [TECH_STACK](TECH_STACK.md) after verification; do not guess.
 
-## Toolchain [v1]
+## Install in stages (only what you need, when you need it)
+Install later stages only when the phase task needs them. This saves disk and setup time. Versions come from [TECH_STACK](TECH_STACK.md) after verification (UNVERIFIED until then).
+
+### Stage 0: no Android tooling [v1]
+Enough for [Phase 1](phases/PHASE-1-core-spine.md) tasks 1, 4-8 and the non-Android parts of 9.
+- [ ] Git and a code editor
+- [ ] Docker (for Postgres + pgvector and the API)
+- [ ] Python and a virtual environment for `ai-service/`
+- [ ] Rust via rustup (host target only; run `cargo test` for SSE parsing, backoff, outbox, SQLCipher logic)
+- [ ] Gemini API key; check limits and model names ([VERIFY_BEFORE_BUILD](VERIFY_BEFORE_BUILD.md) V1, V2)
+
+### Stage 1: before the SQLCipher/UniFFI spike (task 2) [v1]
+- [ ] Android Studio (or the command-line SDK tools). Skip the emulator and system images.
+- [ ] **One** SDK platform (the one your Compose BOM supports; verify)
+- [ ] The NDK (version per cargo-ndk docs; verify)
+- [ ] The Android Rust target for your phone's ABI only (arm64-v8a first)
+- [ ] `cargo-ndk`
+- [ ] Phone: Developer options, USB debugging, `adb devices` shows it
+- [ ] Do the spike now: it is the riskiest step ([RUST_CORE](RUST_CORE.md))
+
+### Stage 2: Compose screens (tasks 10-11) [v1]
+- [ ] Gradle sync works; version catalog filled with verified versions
+- [ ] CameraX and ML Kit dependencies are **not** needed until Phase 2; do not add them yet
+
+### Stage 3: later phases [v1]
+- [ ] Phase 3: nothing new locally except PDF/DOCX fixture files
+- [ ] Phase 5: signing keystore (keep it out of the repo), crash-reporting setup
+
+## Disk-saving rules
+Install only the arm64-v8a target at first, one SDK platform, no emulator images. Prune regularly: `docker system prune`, old `cargo` targets, Gradle caches.
+
+## Full toolchain reference [v1]
 1. **Git** and a code editor.
 2. **Android Studio** (or command-line SDK): install one SDK platform and the NDK (exact versions UNVERIFIED; choose per Compose BOM and cargo-ndk docs). Skip system images.
 3. **Rust** via rustup; add the Android target for your phone's ABI; `cargo install cargo-ndk` (check README for current usage).
