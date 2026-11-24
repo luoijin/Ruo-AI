@@ -71,6 +71,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://ruo_user:ruo_password@localhost:5432/ruo_db
           SYNC_DATABASE_URL: postgresql://ruo_user:ruo_password@localhost:5432/ruo_db
           JWT_SECRET_KEY: test-secret-key-at-least-32-chars-long-for-tests
+          GOOGLE_CLIENT_ID: test-google-client-id-for-testing
         run: alembic upgrade head
       - name: Run Pytest
         working-directory: ai-service
@@ -78,5 +79,6 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://ruo_user:ruo_password@localhost:5432/ruo_db
           SYNC_DATABASE_URL: postgresql://ruo_user:ruo_password@localhost:5432/ruo_db
           JWT_SECRET_KEY: test-secret-key-at-least-32-chars-long-for-tests
+          GOOGLE_CLIENT_ID: test-google-client-id-for-testing
           ENVIRONMENT: test
         run: pytest -v
