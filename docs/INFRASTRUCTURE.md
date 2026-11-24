@@ -18,7 +18,7 @@ Target: **$0 per month** [v1]. All hosting terms below are **UNVERIFIED**: check
 Fallback order: Oracle VM → free PaaS + free Postgres. Keep the provider interface swappable.
 
 ## Docker Compose (local dev) [v1]
-Services: `api` (FastAPI) and `db` (Postgres with pgvector). File: `infra/docker-compose.yml`; variables in `infra/.env.example` (names only). The phone connects to the laptop over LAN or USB reverse proxy ([DEVELOPMENT_SETUP](DEVELOPMENT_SETUP.md)). No emulator.
+Services: `backend` (FastAPI) and `db` (Postgres with pgvector). File: `infra/docker-compose.yml`; variables in `infra/.env.example` (names only). The database port is bound to localhost only (`127.0.0.1:5432:5432`). Note: running `alembic upgrade head` automatically on container startup is strictly a dev convenience in `docker-compose.yml`; in production/staging environments, database migrations must be run as an explicit, separate release step before starting application processes. The phone connects to the laptop over LAN or USB reverse proxy ([DEVELOPMENT_SETUP](DEVELOPMENT_SETUP.md)). No emulator.
 
 ## Environments [v1]
 | Env | Where | Notes |
