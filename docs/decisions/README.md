@@ -15,6 +15,7 @@
 - [ADR-0006](ADR-0006-review-before-send-voice.md) Review-before-send voice
 - [ADR-0007](ADR-0007-postgres-queue-and-quotas.md) Postgres queue and quotas
 - [ADR-0008](ADR-0008-invite-only-beta.md) Invite-only beta
+- [ADR-0009](ADR-0009-uniffi-version-and-toolchain.md) UniFFI 0.28.3 baseline and toolchain
 
 ## Write a new ADR when
 - Changing or reopening a locked decision (needs owner approval).

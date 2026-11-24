@@ -27,6 +27,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Headless Rust core `ruo_core`: SSE parser, reconnect backoff and jitter policy, SQLCipher/SQLite store migrations, outbox state types, stream cancellation, and UniFFI interface.
 - GitHub Actions CI workflow for Rust and Backend test suites.
 - Concurrency test suite on PostgreSQL verifying boundary race conditions and first-request-of-day concurrency.
+- Architecture decision record [ADR-0009](docs/decisions/ADR-0009-uniffi-version-and-toolchain.md) establishing UniFFI 0.28.3 baseline and toolchain for Android bridge.
 
 ### Changed
 - Removed unverified default model name from `GEMINI_FALLBACK_MODEL` (remains unconfigured until verified).
