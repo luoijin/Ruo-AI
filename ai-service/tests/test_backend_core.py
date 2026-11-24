@@ -273,16 +273,21 @@ async def test_quota_exceeded_and_sse_error(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_concurrent_quota_requests():
-    # Test quota increments across requests
+    import asyncio
+
+    # Test true concurrent quota increments across multiple concurrent requests (ADR-0007)
     user_id = f"user_concurrent_{uuid.uuid4().hex[:6]}"
     async with async_session_maker() as session:
         user = User(id=user_id, email=f"{user_id}@example.com")
         session.add(user)
         await session.commit()
 
-    for _ in range(5):
+    async def single_increment():
         async with async_session_maker() as session:
             await check_and_increment_quota(session, user_id=user_id, tokens_in=10, tokens_out=20)
+
+    # Launch 10 concurrent requests simultaneously
+    await asyncio.gather(*[single_increment() for _ in range(10)])
 
     async with async_session_maker() as session:
         today = datetime.now(UTC).date()
@@ -291,9 +296,9 @@ async def test_concurrent_quota_requests():
         res = await session.execute(select(UsageLog).where(UsageLog.user_id == user_id, UsageLog.usage_date == today))
         log = res.scalars().first()
         assert log is not None
-        assert log.request_count == 5
-        assert log.tokens_in == 50
-        assert log.tokens_out == 100
+        assert log.request_count == 10
+        assert log.tokens_in == 100
+        assert log.tokens_out == 200
 
 
 @pytest.mark.asyncio

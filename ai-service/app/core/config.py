@@ -1,10 +1,10 @@
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "infra/.env", "../infra/.env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     # Quotas & Rate Limits
     DAILY_MESSAGE_QUOTA: int = Field(default=40)
     HOURLY_RATE_LIMIT: int = Field(default=100)
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def empty_str_to_default(cls, v, info):
+        # Prevent empty strings from template .env files from overriding sensible defaults
+        if isinstance(v, str) and v.strip() == "":
+            field = cls.model_fields.get(info.field_name)
+            if field is not None and field.default is not ...:
+                return field.default
+        return v
 
 
 settings = Settings()

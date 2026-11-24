@@ -22,7 +22,10 @@ target_metadata = Base.metadata
 
 def get_url():
     # Use sync DB url for migrations
-    return os.getenv("SYNC_DATABASE_URL", settings.SYNC_DATABASE_URL)
+    url = os.getenv("SYNC_DATABASE_URL", settings.SYNC_DATABASE_URL)
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return url
 
 
 def run_migrations_offline() -> None:
