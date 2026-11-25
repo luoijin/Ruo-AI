@@ -3,7 +3,7 @@
 - **Purpose:** Explain when and how to write an ADR.
 - **Audience:** Engineers and agents.
 - **Status:** Draft
-- **Last updated:** 2026-11-23
+- **Last updated:** 2026-11-25
 - **Related docs:** [AGENTS.md](../../AGENTS.md), [FOLDER_STRUCTURE](../FOLDER_STRUCTURE.md)
 
 ## Index
@@ -15,7 +15,7 @@
 - [ADR-0006](ADR-0006-review-before-send-voice.md) Review-before-send voice
 - [ADR-0007](ADR-0007-postgres-queue-and-quotas.md) Postgres queue and quotas
 - [ADR-0008](ADR-0008-invite-only-beta.md) Invite-only beta
-- [ADR-0009](ADR-0009-uniffi-version-and-toolchain.md) UniFFI 0.28.3 baseline and toolchain
+- [ADR-0009](ADR-0009-uniffi-version-and-toolchain.md) UniFFI version and toolchain
 
 ## Write a new ADR when
 - Changing or reopening a locked decision (needs owner approval).
