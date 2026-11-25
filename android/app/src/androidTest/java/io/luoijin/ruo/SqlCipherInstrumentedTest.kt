@@ -32,6 +32,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -120,8 +121,8 @@ class SqlCipherInstrumentedTest {
                     ),
                 ).collect { events.send(it) }
             }
-            assertTrue(withTimeout(5_000) { events.receive() } is StreamEvent.Meta)
-            assertTrue(withTimeout(5_000) { events.receive() } is StreamEvent.Delta)
+            assertTrue(awaitStreamEvent(events, "meta") is StreamEvent.Meta)
+            assertTrue(awaitStreamEvent(events, "delta") is StreamEvent.Delta)
             val conflictEvents = mutableListOf<StreamEvent>()
             reopened.streamMessage(
                 OutboundRequest(
@@ -137,7 +138,7 @@ class SqlCipherInstrumentedTest {
                 (conflictEvents.single() as StreamEvent.Error).failure.code,
             )
             assertTrue(reopened.cancelStream(clientMsgId))
-            val cancelled = withTimeout(5_000) { events.receive() }
+            val cancelled = awaitStreamEvent(events, "cancelled error")
             assertTrue(cancelled is StreamEvent.Error)
             assertEquals(
                 CoreFailureCode.CANCELLED,
@@ -179,6 +180,12 @@ class SqlCipherInstrumentedTest {
         }
     }
 }
+
+private suspend fun awaitStreamEvent(
+    events: Channel<StreamEvent>,
+    expected: String,
+): StreamEvent = withTimeoutOrNull(5_000) { events.receive() }
+    ?: throw AssertionError("Timed out waiting for stream $expected")
 
 private class LoopbackApiServer : AutoCloseable {
     private val server = ServerSocket(0, 4, InetAddress.getByName("127.0.0.1"))
