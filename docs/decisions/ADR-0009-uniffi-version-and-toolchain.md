@@ -2,11 +2,11 @@
 
 - **Purpose:** Propose the UniFFI baseline for the Android bridge before the interface is frozen.
 - **Audience:** Engineers and agents.
-- **Status:** Proposed
+- **Status:** Accepted
 - **Last updated:** 2026-11-25
 - **Related docs:** [ADR guide](README.md), [AGENTS.md](../../AGENTS.md), [RUST_CORE](../RUST_CORE.md), [VERIFY_BEFORE_BUILD](../VERIFY_BEFORE_BUILD.md)
 
-**ADR status:** Proposed; owner approval pending.
+**ADR status:** Accepted 2026-11-25; use 0.32.2 unless a concrete blocker is proven and documented.
 
 ## Context
 
@@ -21,15 +21,15 @@ Changes relevant to this Android bridge:
 - UniFFI 0.32.1 fixed a Kotlin checksum failure on AArch64; 0.32.2 fixed Kotlin compiler warnings in generated code.
 - The UniFFI release notes do not establish compatibility of generated bindings with Kotlin 2.x. That remains **UNVERIFIED** until the generated bridge is compiled with the selected Kotlin Gradle plugin.
 
-## Proposed decision
+## Decision
 
-Use UniFFI **0.32.2** as the baseline before freezing the interface, subject to a successful Android spike. Update foreign-only callback annotations to `#[uniffi::export(foreign)]`. Do not change the dependency or bindings as part of this proposal; the current crate manifest remains on 0.28 until the owner approves this ADR.
+Use UniFFI **0.32.2** as the baseline before freezing the interface. Update foreign-only callback annotations to `#[uniffi::export(foreign)]`. Fall back to 0.28.3 only if a concrete blocker is proven and documented.
 
 The case for retaining 0.28.3 is weak: the reported `cargo-ndk` build only establishes that the current core compiles, and its `rusqlite` feature set is plain `bundled` SQLite, not SQLCipher. It does not demonstrate that 0.28.3 is more stable for the Android SQLCipher bridge. Upgrading before interface freeze makes the callback annotation change cheaper to validate and includes the later Kotlin/AArch64 fixes. Generated bindings must still be tested with the chosen Kotlin toolchain.
 
 ## Consequences
 
-- The proposal is not accepted until the owner approves it; no locked decision or dependency has changed.
+- UniFFI 0.32.2 is approved for the Android bridge; the dependency and bindings are updated as part of the Gate 2 spike.
 - The Gate 2 spike must validate SQLCipher, Kotlin callback execution, and generated bindings on the physical phone.
 - UDL remains an available interface format; the claim that it was removed is withdrawn.
 
