@@ -72,7 +72,7 @@ class SqlCipherInstrumentedTest {
 
             client.saveDraft(conversationId, expected)
             assertEquals(expected, client.getDraft(conversationId))
-            val draftChange = withTimeout(5_000) { localChanges.receive() }
+            val draftChange = awaitLocalChange(localChanges)
             assertTrue(draftChange is LocalChangeEvent.Changed)
             assertEquals(
                 LocalEntity.DRAFT,
@@ -186,6 +186,11 @@ private suspend fun awaitStreamEvent(
     expected: String,
 ): StreamEvent = withTimeoutOrNull(5_000) { events.receive() }
     ?: throw AssertionError("Timed out waiting for stream $expected")
+
+private suspend fun awaitLocalChange(
+    events: Channel<LocalChangeEvent>,
+): LocalChangeEvent = withTimeoutOrNull(5_000) { events.receive() }
+    ?: throw AssertionError("Timed out waiting for local draft change callback")
 
 private class LoopbackApiServer : AutoCloseable {
     private val server = ServerSocket(0, 4, InetAddress.getByName("127.0.0.1"))
