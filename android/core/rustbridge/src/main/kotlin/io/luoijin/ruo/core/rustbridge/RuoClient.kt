@@ -133,7 +133,7 @@ class RuoClient private constructor(
         awaitClose {
             localChangeChannels.remove(channel)
             subscriptions.remove(subscription)
-            subscription.close()
+            subscription.unsubscribe()
         }
     }
 
@@ -245,7 +245,7 @@ class RuoClient private constructor(
         core.clearSession()
         localChangeChannels.forEach { it.close() }
         streamChannels.forEach { it.close() }
-        subscriptions.forEach(LocalChangeSubscription::close)
+        subscriptions.forEach(LocalChangeSubscription::unsubscribe)
         callbackScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         core.close()
         closed = true

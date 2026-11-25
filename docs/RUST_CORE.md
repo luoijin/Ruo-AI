@@ -105,7 +105,7 @@ pub enum OutboxState { Queued, Sending, Failed }
 pub struct OutboxStatus { client_msg_id: String, conversation_id: String, state: OutboxState, attempts: u32, retry_after_sec: Option<u64> }
 pub enum LocalEntity { Conversation, Message, Draft, Outbox }
 pub struct LocalChange { entity: LocalEntity, id: String, revision: u64 }
-pub struct LocalChangeSubscription; // close() unregisters the listener
+pub struct LocalChangeSubscription; // unsubscribe() unregisters the listener
 pub struct StreamMeta { user_server_id: String, assistant_server_id: String, detected_language: Option<String>, study_step: Option<i32>, fallback: bool, replayed: bool }
 pub enum CoreError { Unauthenticated { details: String }, QuotaExceeded { details: String, retry_after_sec: Option<u64> }, RateLimited { details: String, retry_after_sec: Option<u64> }, Network { details: String, retryable: bool, retry_after_sec: Option<u64> }, Cancelled { details: String }, Validation { details: String }, NotFound { details: String }, Conflict { details: String }, KeyUnavailable { details: String }, InvalidKey { details: String }, WrongKey { details: String }, DatabaseCorrupt { details: String }, SchemaTooNew { details: String }, Internal { details: String, retryable: bool, retry_after_sec: Option<u64> } }
 #[uniffi::export(foreign)] pub trait StreamListener: Send + Sync { fn on_meta(&self, client_msg_id: String, meta: StreamMeta); fn on_delta(&self, client_msg_id: String, text: String); fn on_done(&self, client_msg_id: String, assistant_server_id: String, replayed: bool); fn on_error(&self, client_msg_id: String, error: CoreError); }

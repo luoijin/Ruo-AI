@@ -136,7 +136,7 @@ pub struct LocalChangeSubscription {
 
 #[uniffi::export]
 impl LocalChangeSubscription {
-    pub fn close(&self) {
+    pub fn unsubscribe(&self) {
         if let Some(bus) = self.bus.upgrade() {
             bus.remove(self.id);
         }
@@ -145,7 +145,7 @@ impl LocalChangeSubscription {
 
 impl Drop for LocalChangeSubscription {
     fn drop(&mut self) {
-        self.close();
+        self.unsubscribe();
     }
 }
 
