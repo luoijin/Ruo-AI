@@ -3,14 +3,14 @@
 - **Purpose:** Say what Ruo AI is, where it stands, and how to find everything else.
 - **Audience:** Anyone opening the repo (owner, reviewers, AI agents).
 - **Status:** Draft
-- **Last updated:** 2026-11-23
+- **Last updated:** 2026-11-25
 - **Related docs:** [AGENTS.md](AGENTS.md), [docs/PRODUCT.md](docs/PRODUCT.md), [ROADMAP.md](ROADMAP.md)
 
 ## What it is
 Ruo AI is an Android-only AI assistant for students and self-learners, built as a long-term product for Google Play and shown in a portfolio. It is not an MVP. v1 is the full release scope, built to release quality, one phase at a time. v2 is parked ([BACKLOG_V2.md](BACKLOG_V2.md)).
 
 ## Status
-Pre-code. This repo currently holds the documentation scaffold only (see [CHANGELOG.md](CHANGELOG.md)). Next step: Phase 1 ([docs/phases/PHASE-1-core-spine.md](docs/phases/PHASE-1-core-spine.md)).
+Phase 1 is underway: Gate 1 is complete, the Gate 2 SQLCipher Android spike was verified on API 34, and the Gate 3B Rust/UniFFI bridge is in progress. No Compose screens have been added yet; see [CHANGELOG.md](CHANGELOG.md).
 
 ## v1 features [v1]
 Streaming chat with history · camera and multi-image input · file attachments with extraction (PDF, DOCX, TXT, CSV) · voice transcription with review before send · multilingual replies incl. Taglish and Bisaya-English · study mode (hint ladder, check my answer) · Android TTS · share-to-Ruo · document scanner cleanup · citations · quick action chips · feedback buttons · accounts (Google + email code), deletion, export · usage limits · safety · offline · settings. Acceptance criteria: [docs/PRODUCT.md](docs/PRODUCT.md).

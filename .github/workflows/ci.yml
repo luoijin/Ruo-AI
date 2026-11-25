@@ -28,6 +28,9 @@ jobs:
       - name: SQLCipher tests
         working-directory: core-rust
         run: cargo test --all --no-default-features --features sqlcipher
+      - name: Release transport policy test
+        working-directory: core-rust
+        run: cargo test --release --no-default-features --features sqlcipher release_build_rejects_cleartext_even_when_override_is_true
 
   rust-logic-tests:
     name: Rust Logic Tests (Plain SQLite, Host Debug Only)
@@ -67,9 +70,9 @@ jobs:
           target: aarch64-linux-android
       - name: Install pinned cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
-      - name: Build SQLCipher Rust library for arm64-v8a
+      - name: Build debug SQLCipher Rust library for arm64-v8a
         working-directory: core-rust
-        run: cargo ndk -t arm64-v8a -o ../android/core/rustbridge/src/main/jniLibs build --release --locked --no-default-features --features sqlcipher
+        run: cargo ndk -t arm64-v8a -o ../android/core/rustbridge/src/main/jniLibs build --locked --no-default-features --features sqlcipher
       - name: Generate Kotlin bindings from the Android library
         working-directory: core-rust
         run: >-
@@ -83,8 +86,8 @@ jobs:
         with:
           gradle-version: "9.5.0"
       - name: Build app and instrumented test APKs
-        run: gradle -p android --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
-      - name: Stage Gate 2 artifacts
+        run: gradle -p android --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Stage debug SQLCipher bridge artifacts
         run: |
           mkdir -p "$RUNNER_TEMP/ruo-ai-gate2/android/core/rustbridge/src/main/jniLibs/arm64-v8a"
           mkdir -p "$RUNNER_TEMP/ruo-ai-gate2/apk"
@@ -98,6 +101,14 @@ jobs:
         with:
           name: gate2-sqlcipher-arm64
           path: ${{ runner.temp }}/ruo-ai-gate2/
+          if-no-files-found: error
+      - name: Upload instrumentation APKs separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate3b-instrumentation-apks
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           if-no-files-found: error
 
   backend-tests:

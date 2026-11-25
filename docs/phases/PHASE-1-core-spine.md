@@ -3,7 +3,7 @@
 - **Purpose:** Plan and gate Phase 1: Core spine.
 - **Audience:** Engineers and agents.
 - **Status:** Draft
-- **Last updated:** 2026-11-23
+- **Last updated:** 2026-11-25
 - **Related docs:** [ROADMAP](../../ROADMAP.md), [PRODUCT](../PRODUCT.md), [AGENTS.md](../../AGENTS.md), [skills.md](../../skills.md)
 
 ## Goal
@@ -35,9 +35,13 @@ Features 1 (chat and history), 13 (sign-in), 14 (usage limits), 15 (moderation b
 - Retrying a send never duplicates a message.
 - Cached chats open offline.
 - Quota and rate-limit errors show a clear retry time.
+- HTTP 401 produces a safe `UNAUTHENTICATED` result; after refresh, retry uses the same client-generated ID.
+- Errors render from stable codes in English and Filipino; server response text and `CoreError.details` are never shown.
+- Key-loss reset warns about unsent messages and requires confirmation; sign-out wipe also requires confirmation, in both languages.
+- Additive UniFFI changes pass a compatibility check against the previously generated bindings.
 
 ## Test requirements
-Rust unit tests (SSE framing, backoff, migrations); backend tests (auth rotation, quotas, idempotency, streaming with fake provider); FFI test with Taglish/emoji strings; Compose test of the chat screen.
+Rust unit tests (SSE framing, backoff, migrations, 401 error mapping, configured offline-cache bound edges); backend tests (auth rotation, quotas, idempotency, streaming with fake provider); FFI test with Taglish/emoji strings; backup-rule XML parsing test; Compose tests for safe English/Filipino error rendering and key-loss/sign-out confirmations; older-UniFFI-binding compatibility check; listener cancellation on scope teardown.
 
 ## Agent notes (pitfalls)
 - SQLCipher + OpenSSL on Android is the top build risk: spike first, do not build features on top of an unproven toolchain.

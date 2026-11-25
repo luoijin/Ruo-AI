@@ -26,7 +26,7 @@ thiserror = "1.0"
 
 # Networking and async
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
-tokio = { version = "1", features = ["sync", "time", "macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["sync", "time", "macros", "rt-multi-thread", "net", "io-util"] }
 futures-util = "0.3"
 
 # Database (SQLCipher / SQLite)

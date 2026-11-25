@@ -10,11 +10,11 @@ Effort is relative for a solo developer (no dates). Every phase ends release-qua
 
 | Phase | Effort | Goal | Features |
 |---|---|---|---|
-| [1 Core spine](docs/phases/PHASE-1-core-spine.md) | Large | Sign in, stream replies, read cached chats offline | 1, 13 (sign-in), 14, 15 (moderation basics), 16 (reading), 17 (theme) |
+| [1 Core spine](docs/phases/PHASE-1-core-spine.md) | Large | Sign in, stream replies, read cached chats offline; conversation edits are server-first and online-only | 1, 13 (sign-in), 14, 15 (moderation basics), 16 (reading), 17 (theme) |
 | [2 Vision and share](docs/phases/PHASE-2-vision-share.md) | Medium | Images in, share intake | 2, 8, 9, 11 |
 | [3 Documents and citations](docs/phases/PHASE-3-documents-citations.md) | Medium | Extraction, retrieval, citations, injection defense | 3, 10, 15 (injection defense) |
 | [4 Voice, languages, study](docs/phases/PHASE-4-voice-languages-study.md) | Medium | Language policy, review-before-send voice, TTS, hint ladder | 4, 5, 6, 7 |
-| [5 Hardening and release](docs/phases/PHASE-5-hardening-release.md) | Medium | Outbox sync, offline edits/conflict resolution, feedback, settings, deletion/export, a11y, Play production | 12, 13 (delete/export), 16 (outbox), 17 |
+| [5 Hardening and release](docs/phases/PHASE-5-hardening-release.md) | Medium | Outbox sync, offline conversation edits and last-write-wins conflict resolution, feedback, settings, deletion/export, a11y, Play production | 12, 13 (delete/export), 16 (outbox), 17 |
 
 ## Deliverables and exit criteria
 - **Phase 1** [v1]: monorepo and CI, UniFFI bridge, SQLCipher, SSE client, FastAPI auth/chat/quotas, offline reading. *Exit:* sign in, stream a reply, read cached chats offline.
