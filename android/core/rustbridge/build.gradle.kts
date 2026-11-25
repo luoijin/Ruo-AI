@@ -1,6 +1,5 @@
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
 }
 
 android {
@@ -15,7 +14,11 @@ android {
         }
     }
 
-    sourceSets["main"].java.srcDir(layout.buildDirectory.dir("generated/uniffi"))
+    sourceSets.named("main") {
+        kotlin.directories.add(
+            layout.buildDirectory.dir("generated/uniffi").get().asFile.absolutePath,
+        )
+    }
 }
 
 dependencies {
