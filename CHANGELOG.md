@@ -32,6 +32,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Accepted [ADR-0010](docs/decisions/ADR-0010-sqlcipher-android-build.md), recording the verified Android SQLCipher/OpenSSL build, artifact size, and third-party notice requirements.
 - Froze Phase 1 UniFFI interface v1 and implemented `:core:rustbridge` with Keystore-wrapped SQLCipher keys, Kotlin Flow adapters, and dispatcher hops; no Compose screens were added.
 - Added the approved Gate 3 interface conditions: client-generated conversation IDs, keyset sync cursors and tombstones, stream ID semantics, sign-out/key-loss policy, safe errors, and Phase 1 online-only conversation edits.
+- Added multi-agent Phase 1 status docs: `docs/PHASE-1-STATUS.md`, per-agent status files under `docs/status/`, and the updated Phase 1 Definition of Done and command cheat sheet in `AGENTS.md`.
 
 ### Changed
 - Removed unverified default model name from `GEMINI_FALLBACK_MODEL` (remains unconfigured until verified).
