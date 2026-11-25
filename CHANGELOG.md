@@ -36,6 +36,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Corrected the email sender description and tightened UniFFI, rusqlite, and Android toolchain verification notes.
 - Recorded Gemini streaming latency trials and verified the documented thinking-level controls.
 - Added the AndroidX annotation dependency required by generated UniFFI bindings and renamed exported Rust error payload fields to `details` to avoid Kotlin `Throwable.message` conflicts.
+- Verified the Gate 2 SQLCipher/UniFFI build in CI and passed the key, encrypted-header, multilingual round-trip, and Kotlin callback test on a physical API 34 arm64 phone.
 
 ### Fixed
 - Fixed quota check-then-act TOCTOU race condition using a single atomic conditional upsert (`ON CONFLICT ... DO UPDATE ... WHERE request_count < limit RETURNING; zero rows = exhausted`) so quota limits are strictly enforced under concurrency without over-counting or over-allowing.
