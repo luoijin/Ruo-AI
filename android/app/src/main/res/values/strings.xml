@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Ruo AI</string>
+    <string name="app_shell_description">This app shell is ready. Sign-in and chat features are not included yet.</string>
+    <string name="sign_in_title">Sign-in placeholder</string>
+    <string name="chat_title">Chat placeholder</string>
+    <string name="history_title">Conversations placeholder</string>
+    <string name="settings_title">Settings placeholder</string>
+    <string name="placeholder_description">Feature screens will be added in later Gate 4 steps.</string>
+    <string name="back">Back</string>
+</resources>

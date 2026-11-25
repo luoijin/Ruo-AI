@@ -3,7 +3,7 @@
 - **Purpose:** Record every notable change. Format: Keep a Changelog; versioning: Semantic Versioning.
 - **Audience:** Everyone.
 - **Status:** Draft
-- **Last updated:** 2026-11-25
+- **Last updated:** 2026-11-26
 - **Related docs:** [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md)
 
 Every merged change updates this file under `[Unreleased]`.
@@ -33,6 +33,8 @@ Every merged change updates this file under `[Unreleased]`.
 - Froze Phase 1 UniFFI interface v1 and implemented `:core:rustbridge` with Keystore-wrapped SQLCipher keys, Kotlin Flow adapters, and dispatcher hops; no Compose screens were added.
 - Added the approved Gate 3 interface conditions: client-generated conversation IDs, keyset sync cursors and tombstones, stream ID semantics, sign-out/key-loss policy, safe errors, and Phase 1 online-only conversation edits.
 - Added multi-agent Phase 1 status docs: `docs/PHASE-1-STATUS.md`, per-agent status files under `docs/status/`, and the updated Phase 1 Definition of Done and command cheat sheet in `AGENTS.md`.
+- Added the Gate 4A launcher, localized Compose placeholder routes, design-token theme, and Hilt application setup without auth or chat functionality.
+- Added stable debug-only signing from local properties or environment; CI confines the key to the Android build step, verifies APK fingerprints, deletes its temporary copy, and skips APK uploads when secrets are unavailable.
 
 ### Changed
 - Removed unverified default model name from `GEMINI_FALLBACK_MODEL` (remains unconfigured until verified).
@@ -49,8 +51,10 @@ Every merged change updates this file under `[Unreleased]`.
 - Kept the sync-only deleted-conversation flag out of Kotlin's `listConversations` API; the UI listing now returns active conversations only.
 - Added the Gate 4 stable CI debug-signing-key plan, including repository-secret names, OAuth SHA-1 registration, and trusted-workflow handling. No signing key or workflow secret is committed.
 - Added HTTP 401 error-mapping coverage, listener teardown policy, backup-rule parsing and configured offline-cache boundary tests; tracked UI, compatibility, offline-edit, API 26, and low-RAM acceptance gaps in their phase docs.
+- Pinned Compose BOM 2026.06.01 and Navigation Compose 2.9.8 to keep Gate 4A compatible with the installed API 36 SDK.
 
 ### Fixed
+- Fixed the Android CI debug APK signer check to compare against the certificate for the configured key alias instead of the first certificate in the keystore, which could block stable debug APK publication for Gate 4A device validation.
 - Fixed quota check-then-act TOCTOU race condition using a single atomic conditional upsert (`ON CONFLICT ... DO UPDATE ... WHERE request_count < limit RETURNING; zero rows = exhausted`) so quota limits are strictly enforced under concurrency without over-counting or over-allowing.
 
 ### Security

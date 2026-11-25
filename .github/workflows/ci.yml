@@ -85,24 +85,95 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.5.0"
-      - name: Build app and instrumented test APKs
-        run: gradle -p android --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Build app shell and debug APKs
+        id: android_apks
+        env:
+          RUO_DEBUG_KEYSTORE_BASE64: ${{ secrets.RUO_DEBUG_KEYSTORE_BASE64 }}
+          RUO_DEBUG_STORE_PASSWORD: ${{ secrets.RUO_DEBUG_STORE_PASSWORD }}
+          RUO_DEBUG_KEY_ALIAS: ${{ secrets.RUO_DEBUG_KEY_ALIAS }}
+          RUO_DEBUG_KEY_PASSWORD: ${{ secrets.RUO_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          keystore_path="$RUNNER_TEMP/ruo-debug-ci.keystore"
+          certificate_path="$RUNNER_TEMP/ruo-debug-ci-certificate.cer"
+          cleanup() {
+            rm -f "$keystore_path" "$certificate_path"
+          }
+          trap cleanup EXIT
+
+          stable_signing=true
+          if [[ -z "${RUO_DEBUG_KEYSTORE_BASE64:-}" ||
+                -z "${RUO_DEBUG_STORE_PASSWORD:-}" ||
+                -z "${RUO_DEBUG_KEY_ALIAS:-}" ||
+                -z "${RUO_DEBUG_KEY_PASSWORD:-}" ]]; then
+            stable_signing=false
+            echo "::warning::Stable debug signing secrets are unavailable; APKs will not be uploaded."
+            echo "stable_signing=false" >> "$GITHUB_OUTPUT"
+          else
+            printf '%s' "$RUO_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+            chmod 600 "$keystore_path"
+            export RUO_DEBUG_KEYSTORE_PATH="$keystore_path"
+            echo "stable_signing=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          gradle -p android --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+
+          if [[ "$stable_signing" == "true" ]]; then
+            apk_path="android/app/build/outputs/apk/debug/app-debug.apk"
+            apksigner="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+            test -n "$apksigner"
+
+            # Export the certificate for the configured alias. openssl pkcs12 emits
+            # every certificate in the keystore, so its first entry is not
+            # guaranteed to be the signing alias; keytool selects it explicitly.
+            keytool -exportcert \
+              -alias "$RUO_DEBUG_KEY_ALIAS" \
+              -keystore "$keystore_path" \
+              -storepass "$RUO_DEBUG_STORE_PASSWORD" \
+              -file "$certificate_path" >/dev/null
+            expected_fingerprints="$(keytool -printcert -file "$certificate_path")"
+            expected_sha1="$(printf '%s\n' "$expected_fingerprints" | awk '/SHA1:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+            expected_sha256="$(printf '%s\n' "$expected_fingerprints" | awk '/SHA256:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+
+            apk_certificates="$("$apksigner" verify --print-certs "$apk_path" 2>&1)"
+            printf '%s\n' "$apk_certificates"
+            # apksigner labels signers differently across build-tools versions
+            # ("Signer #1 certificate ..." vs "V2 Signer: certificate ..."), so
+            # match on the digest label only.
+            actual_sha1="$(printf '%s\n' "$apk_certificates" | awk '/certificate SHA-1 digest:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+            actual_sha256="$(printf '%s\n' "$apk_certificates" | awk '/certificate SHA-256 digest:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+
+            echo "Expected debug signer SHA-1:   ${expected_sha1:-<unavailable>}"
+            echo "Actual debug signer SHA-1:     ${actual_sha1:-<unavailable>}"
+            echo "Expected debug signer SHA-256: ${expected_sha256:-<unavailable>}"
+            echo "Actual debug signer SHA-256:   ${actual_sha256:-<unavailable>}"
+
+            if [[ -z "$expected_sha1" || -z "$expected_sha256" ]]; then
+              echo "::error::Could not read the expected certificate for alias '$RUO_DEBUG_KEY_ALIAS' from the debug keystore."
+              exit 1
+            fi
+            if [[ -z "$actual_sha1" || "$actual_sha1" != "$expected_sha1" ||
+                  -z "$actual_sha256" || "$actual_sha256" != "$expected_sha256" ]]; then
+              echo "::error::Debug APK signer does not match the configured keystore certificate."
+              exit 1
+            fi
+            echo "Verified stable debug APK signer SHA-1: $actual_sha1"
+            echo "Verified stable debug APK signer SHA-256: $actual_sha256"
+          fi
       - name: Stage debug SQLCipher bridge artifacts
         run: |
           mkdir -p "$RUNNER_TEMP/ruo-ai-gate2/android/core/rustbridge/src/main/jniLibs/arm64-v8a"
-          mkdir -p "$RUNNER_TEMP/ruo-ai-gate2/apk"
           cp android/core/rustbridge/src/main/jniLibs/arm64-v8a/libruo_core.so \
             "$RUNNER_TEMP/ruo-ai-gate2/android/core/rustbridge/src/main/jniLibs/arm64-v8a/"
-          cp android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/ruo-ai-gate2/apk/"
-          cp android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
-            "$RUNNER_TEMP/ruo-ai-gate2/apk/"
-      - name: Upload SQLCipher library and device test APKs
+      - name: Upload SQLCipher library
         uses: actions/upload-artifact@v4
         with:
           name: gate2-sqlcipher-arm64
           path: ${{ runner.temp }}/ruo-ai-gate2/
           if-no-files-found: error
-      - name: Upload instrumentation APKs separately
+      - name: Upload stable debug and instrumentation APKs
+        if: steps.android_apks.outputs.stable_signing == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: gate3b-instrumentation-apks

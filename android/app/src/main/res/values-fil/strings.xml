@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Ruo AI</string>
+    <string name="app_shell_description">Handa na ang balangkas ng app. Hindi pa kasama rito ang pag-sign in at pakikipag-chat.</string>
+    <string name="sign_in_title">Placeholder ng pag-sign in</string>
+    <string name="chat_title">Placeholder ng chat</string>
+    <string name="history_title">Placeholder ng mga usapan</string>
+    <string name="settings_title">Placeholder ng mga setting</string>
+    <string name="placeholder_description">Idaragdag ang mga screen ng feature sa mga susunod na hakbang ng Gate 4.</string>
+    <string name="back">Bumalik</string>
+</resources>
