@@ -1,28 +1,42 @@
-# ADR-0009: UniFFI 0.28.3 baseline and toolchain for Android bridge
+# ADR-0009: UniFFI version and toolchain for Android bridge
 
-- **Purpose:** Freeze the UniFFI version and build toolchain baseline prior to the SQLCipher Android spike.
+- **Purpose:** Propose the UniFFI baseline for the Android bridge before the interface is frozen.
 - **Audience:** Engineers and agents.
-- **Status:** Draft
-- **Last updated:** 2026-11-24
+- **Status:** Proposed
+- **Last updated:** 2026-11-25
 - **Related docs:** [ADR guide](README.md), [AGENTS.md](../../AGENTS.md), [RUST_CORE](../RUST_CORE.md), [VERIFY_BEFORE_BUILD](../VERIFY_BEFORE_BUILD.md)
 
-**ADR status:** Accepted
+**ADR status:** Proposed; owner approval pending.
 
 ## Context
-UniFFI binds the headless Rust core (`ruo_core`) to Kotlin on Android. Between UniFFI 0.28.3 (released November 2024) and 0.32.2 (released September 2026), several breaking changes occurred, including deprecation and removal of UDL files, changes to proc-macro attribute scopes, and modifications to `uniffi-bindgen` CLI arguments.
 
-We need a proven, stable version that:
-1. Compiles with `cargo-ndk 4.1.2` and Android NDK 30 (`aarch64-linux-android`) without toolchain friction.
-2. Supports proc-macro-based exports (`#[uniffi::export]`, `#[uniffi::export(with_foreign)]`) for traits and objects.
-3. Does not churn bindings or introduce unstable dependencies during the upcoming SQLCipher Android spike.
+The official [UniFFI changelog](https://github.com/mozilla/uniffi-rs/blob/v0.32.2/CHANGELOG.md) dates UniFFI 0.28.3 to 2024-11-08 and 0.32.2 to 2026-09-22. The [crates.io package record](https://crates.io/api/v1/crates/uniffi), checked 2026-11-25, reports 0.32.2 as the latest stable version.
 
-## Decision
-Freeze UniFFI at version **0.28.3** as the baseline for the Android bridge.
-- Build tool: `cargo ndk -t arm64-v8a -P 26 build`
-- Kotlin binding generation: via internal generator or `uniffi = { version = "0.28", features = ["cli"] }` (`uniffi::uniffi_bindgen_main()`)
-- Any upgrade to 0.32.x is deferred until after the SQLCipher on-device spike demonstrates need.
+The earlier claim that UDL files were deprecated and removed between those releases is incorrect. UniFFI 0.31 changed `uniffi-bindgen` to auto-detect a library source versus a UDL file; 0.32 still documents UDL-specific changes, including `[ByRef]` arguments. The changelog does not say UDL files were removed.
+
+Changes relevant to this Android bridge:
+
+- UniFFI 0.30 changed callback-interface ABI details for external binding authors and updated built-in bindings; Kotlin also switched to JNA direct mapping. The same release requires UDL trait interfaces to use `#[uniffi::trait_interface]`.
+- UniFFI 0.32 deprecates `#[uniffi::export(with_foreign)]` in favor of `#[uniffi::export(foreign)]` for foreign-only implementations or `#[uniffi::export(rust, foreign)]` when both sides implement the trait. The current callback sketch uses `with_foreign`.
+- UniFFI 0.32.1 fixed a Kotlin checksum failure on AArch64; 0.32.2 fixed Kotlin compiler warnings in generated code.
+- The UniFFI release notes do not establish compatibility of generated bindings with Kotlin 2.x. That remains **UNVERIFIED** until the generated bridge is compiled with the selected Kotlin Gradle plugin.
+
+## Proposed decision
+
+Use UniFFI **0.32.2** as the baseline before freezing the interface, subject to a successful Android spike. Update foreign-only callback annotations to `#[uniffi::export(foreign)]`. Do not change the dependency or bindings as part of this proposal; the current crate manifest remains on 0.28 until the owner approves this ADR.
+
+The case for retaining 0.28.3 is weak: the reported `cargo-ndk` build only establishes that the current core compiles, and its `rusqlite` feature set is plain `bundled` SQLite, not SQLCipher. It does not demonstrate that 0.28.3 is more stable for the Android SQLCipher bridge. Upgrading before interface freeze makes the callback annotation change cheaper to validate and includes the later Kotlin/AArch64 fixes. Generated bindings must still be tested with the chosen Kotlin toolchain.
 
 ## Consequences
-- Proven stability: `ruo_core` compiles cleanly under NDK 30 for `arm64-v8a` in 32 seconds.
-- Avoids transitive dependency churn across the workspace during initial Android integration.
-- Does not use UDL files; proc-macro only export syntax is standard.
+
+- The proposal is not accepted until the owner approves it; no locked decision or dependency has changed.
+- The Gate 2 spike must validate SQLCipher, Kotlin callback execution, and generated bindings on the physical phone.
+- UDL remains an available interface format; the claim that it was removed is withdrawn.
+
+## Sources
+
+- [UniFFI changelog at v0.32.2](https://github.com/mozilla/uniffi-rs/blob/v0.32.2/CHANGELOG.md)
+- [UniFFI 0.28.3 release](https://github.com/mozilla/uniffi-rs/releases/tag/v0.28.3)
+- [UniFFI 0.32.2 release](https://github.com/mozilla/uniffi-rs/releases/tag/v0.32.2)
+- [UniFFI 0.28 proc-macro guide](https://mozilla.github.io/uniffi-rs/0.28/proc_macro/index.html)
+- [UniFFI crates.io package record](https://crates.io/api/v1/crates/uniffi)
