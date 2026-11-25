@@ -16,13 +16,18 @@ use net::{ParsedEvent, SseParser};
 
 uniffi::setup_scaffolding!();
 
-#[uniffi::export(with_foreign)]
+#[uniffi::export(foreign)]
 pub trait StreamListener: Send + Sync {
     fn on_meta(&self, message_id: String, detected_language: Option<String>, fallback: bool);
     fn on_delta(&self, message_id: String, text: String);
     fn on_citation(&self, message_id: String, attachment_id: String, snippet: Option<String>);
     fn on_complete(&self, message_id: String);
     fn on_error(&self, message_id: String, code: String, retryable: bool);
+}
+
+#[uniffi::export(foreign)]
+pub trait DraftReadListener: Send + Sync {
+    fn on_draft_read(&self, conversation_id: String, text: String);
 }
 
 #[derive(uniffi::Object)]
@@ -36,8 +41,10 @@ pub struct RuoCore {
 #[uniffi::export]
 impl RuoCore {
     #[uniffi::constructor]
-    pub fn open(db_path: String, key: Vec<u8>) -> Result<Arc<Self>, CoreError> {
-        let db = DbHandle::open(&db_path, &key)?;
+    pub fn open(db_path: String, mut key: Vec<u8>) -> Result<Arc<Self>, CoreError> {
+        let db_result = DbHandle::open(&db_path, &key);
+        key.fill(0);
+        let db = db_result?;
         Ok(Arc::new(Self {
             db: Arc::new(db),
             access_token: RwLock::new(None),
@@ -70,6 +77,22 @@ impl RuoCore {
 
     pub fn get_draft(&self, conversation_id: String) -> Result<Option<String>, CoreError> {
         self.db.get_draft(&conversation_id)
+    }
+
+    pub fn read_draft_with_listener(
+        &self,
+        conversation_id: String,
+        listener: Arc<dyn DraftReadListener>,
+    ) -> Result<(), CoreError> {
+        let text =
+            self.db
+                .get_draft(&conversation_id)?
+                .ok_or_else(|| CoreError::DatabaseError {
+                    message: "Draft not found".to_string(),
+                    retryable: false,
+                })?;
+        listener.on_draft_read(conversation_id, text);
+        Ok(())
     }
 
     pub fn list_conversations(
@@ -231,7 +254,7 @@ mod tests {
     fn test_core_open_drafts_and_cancel() {
         let temp_dir = tempfile::tempdir().unwrap();
         let db_file = temp_dir.path().join("test_ruo.db");
-        let key = b"secure_key_from_keystore_32_bytes!!".to_vec();
+        let key = vec![0x42; 32];
 
         let core = RuoCore::open(db_file.to_str().unwrap().to_string(), key).unwrap();
 

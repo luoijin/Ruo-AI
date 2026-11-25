@@ -19,11 +19,11 @@ tokio = { version = "1", features = ["sync", "time", "macros", "rt-multi-thread"
 futures-util = "0.3"
 
 # Database (SQLCipher / SQLite)
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.43.0", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 # UniFFI for cross-language binding
-uniffi = { version = "0.28", features = ["tokio"] }
+uniffi = { version = "0.32.2", features = ["tokio"] }
 
 [dev-dependencies]
 tempfile = "3.10"
