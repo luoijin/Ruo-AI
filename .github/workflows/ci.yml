@@ -138,8 +138,11 @@ jobs:
 
             apk_certificates="$("$apksigner" verify --print-certs "$apk_path" 2>&1)"
             printf '%s\n' "$apk_certificates"
-            actual_sha1="$(printf '%s\n' "$apk_certificates" | awk '/Signer #1 certificate SHA-1 digest:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-            actual_sha256="$(printf '%s\n' "$apk_certificates" | awk '/Signer #1 certificate SHA-256 digest:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+            # apksigner labels signers differently across build-tools versions
+            # ("Signer #1 certificate ..." vs "V2 Signer: certificate ..."), so
+            # match on the digest label only.
+            actual_sha1="$(printf '%s\n' "$apk_certificates" | awk '/certificate SHA-1 digest:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+            actual_sha256="$(printf '%s\n' "$apk_certificates" | awk '/certificate SHA-256 digest:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
 
             echo "Expected debug signer SHA-1:   ${expected_sha1:-<unavailable>}"
             echo "Actual debug signer SHA-1:     ${actual_sha1:-<unavailable>}"
