@@ -36,7 +36,7 @@ val stableDebugSigningAvailable =
 
 android {
     namespace = "io.luoijin.ruo"
-    compileSdk = 37
+    compileSdk = 36
     ndkVersion = "30.0.16248370"
 
     buildFeatures {
@@ -87,12 +87,12 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2026.11.01")
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(project(":core:rustbridge"))
     implementation(composeBom)
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.navigation:navigation-compose:2.10.2")
+    implementation("androidx.navigation:navigation-compose:2.9.8")
     implementation("com.google.dagger:hilt-android:2.60.1")
     ksp("com.google.dagger:hilt-compiler:2.60.1")
     debugImplementation("androidx.compose.ui:ui-tooling")

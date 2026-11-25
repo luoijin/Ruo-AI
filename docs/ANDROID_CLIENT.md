@@ -7,7 +7,7 @@
 - **Related docs:** [RUST_CORE](RUST_CORE.md), [ARCHITECTURE](ARCHITECTURE.md), [FOLDER_STRUCTURE](FOLDER_STRUCTURE.md), [../skills.md](../skills.md)
 
 ## Baseline [v1]
-Min SDK 26 (Android 8.0). The app compiles against API 37 to satisfy the current Compose and Navigation dependency metadata while continuing to target API 36. Google Play's 2026 target requirement and the exact AGP 9.3.1 / Gradle 9.5.0 / Kotlin 2.4.21 baseline are recorded in [VERIFY_BEFORE_BUILD](VERIFY_BEFORE_BUILD.md); generated Kotlin bindings compiled in CI and the SQLCipher integration test passed on a physical API 34 arm64 phone. See [ADR-0010](decisions/ADR-0010-sqlcipher-android-build.md).
+Min SDK 26 (Android 8.0). The app compiles and targets API 36. The Compose BOM and Navigation versions are pinned to artifacts compatible with that installed API level. Google Play's 2026 target requirement and the exact AGP 9.3.1 / Gradle 9.5.0 / Kotlin 2.4.21 baseline are recorded in [VERIFY_BEFORE_BUILD](VERIFY_BEFORE_BUILD.md); generated Kotlin bindings compiled in CI and the SQLCipher integration test passed on a physical API 34 arm64 phone. See [ADR-0010](decisions/ADR-0010-sqlcipher-android-build.md).
 
 ## Modules [v1]
 `:app` (application, activities, navigation) · `:core:ui` (design tokens, Markdown and code renderer, attachment preview, citation chips) · `:core:rustbridge` (UniFFI wrapper, Keystore key handling, Flow adapters) · `:feature:chat` · `:feature:camera` · `:feature:auth` · `:feature:settings`. Tree: [FOLDER_STRUCTURE](FOLDER_STRUCTURE.md).
@@ -31,7 +31,7 @@ The app reads local signing values from environment variables or the ignored `an
 
 CI exposes the four Actions secrets only to the Android APK build step, decodes the key under `RUNNER_TEMP`, uses it only for debug APKs, compares APK SHA-1/SHA-256 fingerprints to the keystore certificate, and deletes the temporary keystore on exit. Fork pull requests receive no secrets; they may build with the default debug key but do not upload APK artifacts. The keystore is never uploaded and secret values are never logged.
 
-Gate 4A uses the Compose BOM 2026.11.01, Activity Compose 1.13.0, Navigation Compose 2.10.2, Hilt 2.60.1 and KSP 2.3.12, with Kotlin 2.4.21, AGP 9.3.1 and Gradle 9.5.0. The theme uses system fonts until font licenses are verified. Filipino shell strings are provisional and require owner review.
+Gate 4A uses the Compose BOM 2026.06.01, Activity Compose 1.13.0, Navigation Compose 2.9.8, Hilt 2.60.1 and KSP 2.3.12, with Kotlin 2.4.21, AGP 9.3.1 and Gradle 9.5.0. The theme uses system fonts until font licenses are verified. Filipino shell strings are provisional and require owner review.
 
 Sources checked 2026-11-26: [GitHub Actions secrets](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions), [Android app signing](https://developer.android.com/studio/publish/app-signing), [Google Android client authentication and SHA-1 fingerprints](https://developers.google.com/android/guides/client-auth), [Hilt Gradle setup](https://dagger.dev/hilt/gradle-setup.html), [KSP quickstart](https://kotlinlang.org/docs/ksp-quickstart.html), [Compose setup](https://developer.android.com/develop/ui/compose/setup-compose-dependencies-and-compiler), [Navigation releases](https://developer.android.com/jetpack/androidx/releases/navigation), and [type-safe navigation](https://developer.android.com/guide/navigation/design/type-safety).
 
