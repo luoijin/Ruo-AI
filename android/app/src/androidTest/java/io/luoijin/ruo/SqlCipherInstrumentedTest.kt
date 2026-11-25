@@ -1,6 +1,7 @@
 package io.luoijin.ruo
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.luoijin.ruo.core.rustbridge.CoreException
@@ -9,6 +10,8 @@ import io.luoijin.ruo.core.rustbridge.DatabaseKeyManager
 import io.luoijin.ruo.core.rustbridge.KeyUnavailableException
 import io.luoijin.ruo.core.rustbridge.LocalChangeEvent
 import io.luoijin.ruo.core.rustbridge.LocalEntity
+import io.luoijin.ruo.core.rustbridge.LocalMessageStatus
+import io.luoijin.ruo.core.rustbridge.MessageRole
 import io.luoijin.ruo.core.rustbridge.OutboundRequest
 import io.luoijin.ruo.core.rustbridge.RuoClient
 import io.luoijin.ruo.core.rustbridge.RuoCore
@@ -42,11 +45,14 @@ class SqlCipherInstrumentedTest {
     @Test
     fun encryptedStoreCallbacksAndMidStreamCancellationWorkOnDevice() = runBlocking<Unit> {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        assertFalse(
+            (context.applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP) != 0,
+        )
         val databaseFile = File(context.noBackupFilesDir, "ruo.db")
         val keyManager = DatabaseKeyManager(context)
         keyManager.wipeLocalData(databaseFile)
         val server = LoopbackApiServer()
-        val client = RuoClient.open(context, Dispatchers.Main.immediate)
+        val client = RuoClient.open(context, Dispatchers.IO)
         val conversationId = UUID.randomUUID().toString()
         val expected = "Taglish: Kumusta, paano ito? Cebuano: Maayong buntag, unsaon ni? 🌱📚"
         val localChanges = Channel<LocalChangeEvent>(Channel.UNLIMITED)
@@ -98,7 +104,7 @@ class SqlCipherInstrumentedTest {
             client.close()
             clientForCleanup = null
 
-            val reopened = RuoClient.open(context, Dispatchers.Main.immediate)
+            val reopened = RuoClient.open(context, Dispatchers.IO)
             clientForCleanup = reopened
             assertEquals(expected, reopened.getDraft(conversationId))
             reopened.setSession("test-access-token", server.baseUrl, allowCleartextDebug = true)
@@ -116,6 +122,20 @@ class SqlCipherInstrumentedTest {
             }
             assertTrue(withTimeout(5_000) { events.receive() } is StreamEvent.Meta)
             assertTrue(withTimeout(5_000) { events.receive() } is StreamEvent.Delta)
+            val conflictEvents = mutableListOf<StreamEvent>()
+            reopened.streamMessage(
+                OutboundRequest(
+                    clientMsgId = UUID.randomUUID().toString(),
+                    conversationId = conversationId,
+                    content = "second active stream",
+                ),
+            ).collect { conflictEvents.add(it) }
+            assertEquals(1, conflictEvents.size)
+            assertTrue(conflictEvents.single() is StreamEvent.Error)
+            assertEquals(
+                CoreFailureCode.CONFLICT,
+                (conflictEvents.single() as StreamEvent.Error).failure.code,
+            )
             assertTrue(reopened.cancelStream(clientMsgId))
             val cancelled = withTimeout(5_000) { events.receive() }
             assertTrue(cancelled is StreamEvent.Error)
@@ -126,6 +146,21 @@ class SqlCipherInstrumentedTest {
             withTimeout(5_000) { streamJob.join() }
             assertFalse(reopened.cancelStream(clientMsgId))
 
+            val completedClientMsgId = UUID.randomUUID().toString()
+            val completedEvents = mutableListOf<StreamEvent>()
+            reopened.streamMessage(
+                OutboundRequest(
+                    clientMsgId = completedClientMsgId,
+                    conversationId = conversationId,
+                    content = "complete this response",
+                ),
+            ).collect { completedEvents.add(it) }
+            assertTrue(completedEvents.any { it is StreamEvent.Done })
+            val assistant = reopened.listMessages(conversationId, 20u)
+                .first { it.clientMsgId == completedClientMsgId && it.role == MessageRole.Assistant }
+            assertEquals(LocalMessageStatus.Sent, assistant.status)
+            assertEquals("Maayong buntag 🌱", assistant.contentMd)
+
             context.getSharedPreferences("ruo_database_key", Context.MODE_PRIVATE)
                 .edit()
                 .clear()
@@ -133,6 +168,9 @@ class SqlCipherInstrumentedTest {
             assertThrows(KeyUnavailableException::class.java) {
                 DatabaseKeyManager(context).getOrCreate(databaseFile)
             }
+            reopened.signOutAndWipeLocalData()
+            clientForCleanup = null
+            assertFalse(databaseFile.exists())
         } finally {
             localChangeJob?.cancelAndJoin()
             clientForCleanup?.signOutAndWipeLocalData()
@@ -208,7 +246,8 @@ private class LoopbackApiServer : AutoCloseable {
                 }
                 requestLine.startsWith("POST /v1/conversations/") &&
                     requestLine.contains("/messages ") -> {
-                    val clientMsgId = JSONObject(body).getString("client_msg_id")
+                    val request = JSONObject(body)
+                    val clientMsgId = request.getString("client_msg_id")
                     val output = it.getOutputStream()
                     output.write(
                         ("HTTP/1.1 200 OK\r\n" +
@@ -222,6 +261,14 @@ private class LoopbackApiServer : AutoCloseable {
                             "\"assistant_message_id\":\"server-assistant-id\"}\n\n").toByteArray(),
                     )
                     output.write("event: delta\ndata: {\"text\":\"Maayong buntag 🌱\"}\n\n".toByteArray())
+                    if (request.getString("content") == "complete this response") {
+                        output.write(
+                            "event: done\ndata: {\"assistant_message_id\":\"server-assistant-id\",\"replayed\":false}\n\n"
+                                .toByteArray(),
+                        )
+                        output.flush()
+                        return
+                    }
                     output.flush()
                     repeat(100) {
                         Thread.sleep(50)

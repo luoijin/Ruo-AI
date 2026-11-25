@@ -28,6 +28,9 @@ jobs:
       - name: SQLCipher tests
         working-directory: core-rust
         run: cargo test --all --no-default-features --features sqlcipher
+      - name: Release transport policy test
+        working-directory: core-rust
+        run: cargo test --release --no-default-features --features sqlcipher release_build_rejects_cleartext_even_when_override_is_true
 
   rust-logic-tests:
     name: Rust Logic Tests (Plain SQLite, Host Debug Only)

@@ -43,6 +43,9 @@ Every merged change updates this file under `[Unreleased]`.
 - Added an explicit host-debug plain-SQLite logic-test mode, compile guards against Android/release use, a Linux SQLCipher test job, and a `gh`-based latest-library download script.
 - Preserved full server timestamp precision in local keyset pagination and added FFI instrumentation coverage for SQLCipher key errors, encrypted storage, callbacks, and stream cancellation.
 - Published the two Android instrumentation APKs as a separate CI artifact so device verification can fetch them without downloading the Rust library.
+- Added device coverage for concurrent-stream conflicts and assistant persistence after SSE `done`; added a release-mode test that rejects loopback HTTP even when `allow_cleartext_debug` is true.
+- Kept the sync-only deleted-conversation flag out of Kotlin's `listConversations` API; the UI listing now returns active conversations only.
+- Added the Gate 4 stable CI debug-signing-key plan, including repository-secret names, OAuth SHA-1 registration, and trusted-workflow handling. No signing key or workflow secret is committed.
 
 ### Fixed
 - Fixed quota check-then-act TOCTOU race condition using a single atomic conditional upsert (`ON CONFLICT ... DO UPDATE ... WHERE request_count < limit RETURNING; zero rows = exhausted`) so quota limits are strictly enforced under concurrency without over-counting or over-allowing.

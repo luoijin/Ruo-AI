@@ -89,10 +89,9 @@ class RuoClient private constructor(
         limit: UInt = 50u,
         beforeUpdatedAtUs: Long? = null,
         beforeId: String? = null,
-        includeDeleted: Boolean = false,
     ): List<ConversationSummary> = withContext(Dispatchers.IO) {
         checkOpen()
-        core.listConversations(query, limit, beforeUpdatedAtUs, beforeId, includeDeleted)
+        core.listConversations(query, limit, beforeUpdatedAtUs, beforeId)
     }
 
     suspend fun listMessages(

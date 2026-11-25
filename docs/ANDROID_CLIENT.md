@@ -18,6 +18,19 @@ Each screen has `UiState` (immutable), a sealed `UiIntent`, and one-off `UiEffec
 ## Navigation (type-safe routes) [v1]
 `Auth` · `Chat(conversationId?)` · `Scanner` · `Settings` · `AttachmentViewer(attachmentId, page)`.
 
+## Gate 4: auth and stable CI debug signing
+Google sign-in's Android OAuth client uses the debug package name `io.luoijin.ruo.debug` and the SHA-1 of the certificate that signs the debug APK. Keep a dedicated CI debug key stable across runs; never reuse it for release signing or commit the keystore.
+
+Owner setup, before wiring Google sign-in:
+1. Generate a dedicated keystore outside the repository with the JDK `keytool` utility: `New-Item -ItemType Directory -Force "$HOME\.android" | Out-Null; keytool -genkeypair -v -keystore "$HOME\.android\ruo-debug-ci.keystore" -alias ruo-debug-ci`. Retain the keystore and key passwords locally.
+2. Read its SHA-1 with `keytool -list -v -keystore <keystore-path> -alias ruo-debug-ci` and register that fingerprint for the Android OAuth client with package `io.luoijin.ruo.debug` in the Google Cloud project.
+3. In PowerShell, copy a base64 encoding of the keystore to the clipboard without printing it: `$path = "$HOME\.android\ruo-debug-ci.keystore"; [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) | Set-Clipboard`.
+4. In repository **Settings → Secrets and variables → Actions**, create `RUO_DEBUG_KEYSTORE_BASE64` (paste the clipboard value), `RUO_DEBUG_STORE_PASSWORD`, `RUO_DEBUG_KEY_ALIAS`, and `RUO_DEBUG_KEY_PASSWORD`. Do not paste secret values into a terminal transcript, issue, or pull request.
+
+CI changes planned for Gate 4: expose those secrets only to the trusted Android build job; decode the keystore into `RUNNER_TEMP`; configure only the `debug` build type to use it; verify the APK certificate fingerprint; and delete the temporary keystore after staging artifacts. Keep release signing separate. Fork pull requests receive no secrets, so CI must omit the device-test APK artifact when the key is unavailable rather than publish an APK with a changing signature. The workflow must never print secret values.
+
+Sources checked 2026-11-25: [GitHub Actions secrets](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions), [Android app signing](https://developer.android.com/studio/publish/app-signing), and [Google Android client authentication and SHA-1 fingerprints](https://developers.google.com/android/guides/client-auth).
+
 ## Composer tray [v1]
 Horizontal row of thumbnails or file cards, each with a remove button; page-number badges or drag handles for multi-image messages; a progress ring: Uploading → Extracting → Ready or Failed. Quick action chips (Summarize, Explain, Translate, Solve) appear on attachments.
 

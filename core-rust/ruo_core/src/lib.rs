@@ -422,14 +422,13 @@ impl RuoCore {
         limit: u32,
         before_updated_at_us: Option<i64>,
         before_id: Option<String>,
-        include_deleted: bool,
     ) -> Result<Vec<ConversationSummary>, CoreError> {
         self.db.list_conversations(
             query.as_deref(),
             limit,
             before_updated_at_us,
             before_id.as_deref(),
-            include_deleted,
+            false,
         )
     }
 
@@ -1196,6 +1195,52 @@ mod tests {
     }
 
     #[test]
+    fn public_conversation_list_hides_sync_tombstones() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_file = temp_dir.path().join("conversation_tombstones.db");
+        let core = RuoCore::open(db_file.to_str().unwrap().to_string(), vec![0x42; 32]).unwrap();
+        core.db
+            .create_conversation("live", "Live", "en", false)
+            .unwrap();
+        core.db
+            .upsert_conversation(&ConversationSummary {
+                id: "deleted".to_string(),
+                title: "Deleted".to_string(),
+                active_language: "en".to_string(),
+                study_mode_default: false,
+                created_at_ms: 1,
+                updated_at_ms: 2,
+                updated_at_us: 2_000,
+                deleted_at_ms: Some(2),
+            })
+            .unwrap();
+
+        let visible = core.list_conversations(None, 50, None, None).unwrap();
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].id, "live");
+    }
+
+    #[test]
+    fn clear_session_removes_authentication_state() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_file = temp_dir.path().join("clear_session.db");
+        let core = RuoCore::open(db_file.to_str().unwrap().to_string(), vec![0x42; 32]).unwrap();
+        core.set_session(
+            "token".to_string(),
+            "https://api.example.test".to_string(),
+            false,
+        )
+        .unwrap();
+
+        core.clear_session().unwrap();
+
+        assert!(matches!(
+            core.session(),
+            Err(CoreError::Unauthenticated { .. })
+        ));
+    }
+
+    #[test]
     fn set_session_rejects_non_https_except_explicit_debug_loopback() {
         let temp_dir = tempfile::tempdir().unwrap();
         let db_file = temp_dir.path().join("test_ruo.db");
@@ -1212,6 +1257,23 @@ mod tests {
                 )
                 .is_ok());
         }
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn release_build_rejects_cleartext_even_when_override_is_true() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_file = temp_dir.path().join("release_ruo.db");
+        let core = RuoCore::open(db_file.to_str().unwrap().to_string(), vec![0x42; 32]).unwrap();
+
+        assert!(matches!(
+            core.set_session(
+                "token".to_string(),
+                "http://127.0.0.1:8000".to_string(),
+                true
+            ),
+            Err(CoreError::Validation { .. })
+        ));
     }
 
     #[tokio::test]
@@ -1239,6 +1301,93 @@ mod tests {
         server_task.abort();
         assert_eq!(error.code(), "UNAUTHENTICATED");
         assert!(!format!("{error:?}").contains(secret));
+    }
+
+    #[tokio::test]
+    async fn history_sync_requests_and_persists_server_tombstones() {
+        use std::collections::HashMap;
+
+        let requested_tombstones = Arc::new(AtomicBool::new(false));
+        let requested_tombstones_route = Arc::clone(&requested_tombstones);
+        let conversations = warp::path!("v1" / "conversations")
+            .and(warp::get())
+            .and(warp::query::<HashMap<String, String>>())
+            .map(move |query: HashMap<String, String>| {
+                requested_tombstones_route.store(
+                    query.get("include_deleted").map(String::as_str) == Some("true"),
+                    Ordering::SeqCst,
+                );
+                warp::reply::json(&json!([
+                    {
+                        "id": "deleted",
+                        "title": "Deleted",
+                        "active_language": "en",
+                        "study_mode_default": false,
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "updated_at": "2026-01-03T00:00:00Z",
+                        "deleted_at": "2026-01-03T00:00:00Z"
+                    },
+                    {
+                        "id": "live",
+                        "title": "Live",
+                        "active_language": "en",
+                        "study_mode_default": false,
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "updated_at": "2026-01-02T00:00:00Z",
+                        "deleted_at": null
+                    }
+                ]))
+            });
+        let messages = warp::path!("v1" / "conversations" / String / "messages")
+            .and(warp::get())
+            .map(|_| warp::reply::json(&json!([])));
+        let (address, server) =
+            warp::serve(conversations.or(messages)).bind_ephemeral(([127, 0, 0, 1], 0));
+        let server_task = tokio::spawn(server);
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_file = temp_dir.path().join("history_sync.db");
+        let core = RuoCore::open(db_file.to_str().unwrap().to_string(), vec![0x42; 32]).unwrap();
+        core.set_session("test-token".to_string(), format!("http://{address}"), true)
+            .unwrap();
+        let listener = Arc::new(RecordingSyncListener {
+            completed: AtomicBool::new(false),
+            error_code: Mutex::new(None),
+        });
+
+        core.sync_history(
+            HistorySyncConfig {
+                conversation_page_size: 10,
+                message_page_size: 10,
+                offline_recent_conversations: 10,
+                offline_recent_messages_per_conversation: 10,
+            },
+            listener.clone(),
+        )
+        .unwrap();
+        for _ in 0..50 {
+            if listener.completed.load(Ordering::SeqCst)
+                || listener.error_code.lock().unwrap().is_some()
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+
+        assert!(listener.completed.load(Ordering::SeqCst));
+        assert!(listener.error_code.lock().unwrap().is_none());
+        assert!(requested_tombstones.load(Ordering::SeqCst));
+        let all_local = core
+            .db
+            .list_conversations(None, 10, None, None, true)
+            .unwrap();
+        assert_eq!(all_local.len(), 2);
+        assert!(all_local.iter().any(|conversation| {
+            conversation.id == "deleted" && conversation.deleted_at_ms.is_some()
+        }));
+        let visible = core.list_conversations(None, 10, None, None).unwrap();
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].id, "live");
+        server_task.abort();
     }
 
     #[tokio::test]
@@ -1283,6 +1432,21 @@ mod tests {
             listener.clone(),
         )
         .unwrap();
+        assert!(matches!(
+            core.stream_message(
+                OutboundRequest {
+                    client_msg_id: "client-2".to_string(),
+                    conversation_id: "conv-1".to_string(),
+                    content: "second stream".to_string(),
+                    parent_message_id: None,
+                    attachment_ids: vec![],
+                    intent: None,
+                    study_mode: false,
+                },
+                listener.clone(),
+            ),
+            Err(CoreError::Conflict { .. })
+        ));
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(core.cancel_stream("client-1".to_string()));
         for _ in 0..20 {
@@ -1297,6 +1461,72 @@ mod tests {
         );
         assert!(!listener.done.load(Ordering::SeqCst));
         assert!(!core.cancel_stream("client-1".to_string()));
+        server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn stream_persists_assistant_message_after_done() {
+        let route = warp::any().map(|| {
+            let stream = async_stream::stream! {
+                yield Ok::<_, warp::Error>(warp::sse::Event::default().event("meta").data(
+                    r#"{"client_msg_id":"client-done","user_message_id":"user-1","assistant_message_id":"assistant-1"}"#,
+                ));
+                yield Ok::<_, warp::Error>(warp::sse::Event::default().event("delta").data(
+                    r#"{"text":"answer"}"#,
+                ));
+                yield Ok::<_, warp::Error>(warp::sse::Event::default().event("done").data(
+                    r#"{"assistant_message_id":"assistant-1","replayed":false}"#,
+                ));
+            };
+            warp::sse::reply(warp::sse::keep_alive().stream(stream))
+        });
+        let (address, server) = warp::serve(route).bind_ephemeral(([127, 0, 0, 1], 0));
+        let server_task = tokio::spawn(server);
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_file = temp_dir.path().join("stream_done.db");
+        let core = RuoCore::open(db_file.to_str().unwrap().to_string(), vec![0x42; 32]).unwrap();
+        core.db
+            .create_conversation("conv-1", "Study", "en", false)
+            .unwrap();
+        core.set_session("test-token".to_string(), format!("http://{address}"), true)
+            .unwrap();
+        let listener = Arc::new(RecordingStreamListener {
+            done: AtomicBool::new(false),
+            error_code: Mutex::new(None),
+        });
+
+        core.stream_message(
+            OutboundRequest {
+                client_msg_id: "client-done".to_string(),
+                conversation_id: "conv-1".to_string(),
+                content: "hello".to_string(),
+                parent_message_id: None,
+                attachment_ids: vec![],
+                intent: None,
+                study_mode: false,
+            },
+            listener.clone(),
+        )
+        .unwrap();
+
+        for _ in 0..50 {
+            if listener.done.load(Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(listener.done.load(Ordering::SeqCst));
+        let messages = core.db.list_messages("conv-1", 10, None, None).unwrap();
+        let assistant = messages
+            .iter()
+            .find(|message| {
+                message.role == MessageRole::Assistant
+                    && message.client_msg_id.as_deref() == Some("client-done")
+            })
+            .unwrap();
+        assert_eq!(assistant.role, MessageRole::Assistant);
+        assert_eq!(assistant.status, LocalMessageStatus::Sent);
+        assert_eq!(assistant.content_md, "answer");
         server_task.abort();
     }
 }
