@@ -29,6 +29,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Concurrency test suite on PostgreSQL verifying boundary race conditions and first-request-of-day concurrency.
 - Architecture decision record [ADR-0009](docs/decisions/ADR-0009-uniffi-version-and-toolchain.md) establishing UniFFI 0.32.2 as the Android bridge baseline.
 - Minimal Android `:app` / `:core:rustbridge` SQLCipher spike, arm64 NDK/UniFFI/APK CI build, and on-device instrumentation checks for encrypted storage and callbacks.
+- Accepted [ADR-0010](docs/decisions/ADR-0010-sqlcipher-android-build.md), recording the verified Android SQLCipher/OpenSSL build, artifact size, and third-party notice requirements.
 
 ### Changed
 - Removed unverified default model name from `GEMINI_FALLBACK_MODEL` (remains unconfigured until verified).
