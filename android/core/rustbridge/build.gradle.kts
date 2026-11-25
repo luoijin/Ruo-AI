@@ -13,9 +13,11 @@ android {
             abiFilters += "arm64-v8a"
         }
     }
+}
 
-    sourceSets.named("main") {
-        kotlin.directories.add(
+androidComponents {
+    onVariants { variant ->
+        variant.sources.kotlin!!.addStaticSourceDirectory(
             layout.buildDirectory.dir("generated/uniffi").get().asFile.absolutePath,
         )
     }
