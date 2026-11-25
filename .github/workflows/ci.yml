@@ -65,7 +65,7 @@ jobs:
           cargo run --locked --features bindgen-cli --bin uniffi-bindgen --
           generate ../android/core/rustbridge/src/main/jniLibs/arm64-v8a/libruo_core.so
           --language kotlin
-          --config ruo_core/uniffi.toml
+          --no-format
           --out-dir ../android/core/rustbridge/build/generated/uniffi
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

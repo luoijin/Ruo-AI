@@ -59,7 +59,7 @@ Ruo AI is an Android-only AI assistant (students, self-learners; bilingual users
 | Rust tests | `cargo test (in core-rust/)` |
 | Rust lint | `cargo clippy --all-targets (in core-rust/)` |
 | Build Rust for Android | GitHub Actions `android-build` job (NDK 30, arm64-v8a); download `gate2-sqlcipher-arm64` artifact |
-| Generate UniFFI bindings | `cargo run --locked --features bindgen-cli --bin uniffi-bindgen -- generate <libruo_core.so> --language kotlin --config ruo_core/uniffi.toml --out-dir <generated dir> (in core-rust/)` |
+| Generate UniFFI bindings | `cargo run --locked --features bindgen-cli --bin uniffi-bindgen -- generate <libruo_core.so> --language kotlin --out-dir <generated dir> (in core-rust/; picks up ruo_core/uniffi.toml)` |
 | Android build | `gradle -p android :app:assembleDebug` (JDK 17; Gradle 9.5.0) |
 | Android tests | `gradle -p android :app:connectedDebugAndroidTest` (physical arm64 device required) |
 | Migrations | `alembic upgrade head (in ai-service/)` |
