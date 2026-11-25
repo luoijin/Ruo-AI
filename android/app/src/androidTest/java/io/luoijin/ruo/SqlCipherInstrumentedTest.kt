@@ -26,6 +26,7 @@ import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
@@ -66,7 +67,7 @@ class SqlCipherInstrumentedTest {
                 null,
                 client.createConversation(conversationId, "Study", "en", false),
             )
-            localChangeJob = launch {
+            localChangeJob = launch(start = CoroutineStart.UNDISPATCHED) {
                 client.localChanges().collect { localChanges.send(it) }
             }
 
