@@ -88,7 +88,7 @@ impl RuoCore {
             self.db
                 .get_draft(&conversation_id)?
                 .ok_or_else(|| CoreError::DatabaseError {
-                    message: "Draft not found".to_string(),
+                    details: "Draft not found".to_string(),
                     retryable: false,
                 })?;
         listener.on_draft_read(conversation_id, text);

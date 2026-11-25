@@ -12,13 +12,13 @@ impl DbHandle {
     pub fn open(path: &str, key: &[u8]) -> Result<Self, CoreError> {
         if key.len() != 32 {
             return Err(CoreError::DatabaseError {
-                message: "Database key must be 32 bytes".to_string(),
+                details: "Database key must be 32 bytes".to_string(),
                 retryable: false,
             });
         }
 
         let mut conn = Connection::open(path).map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
 
@@ -29,7 +29,7 @@ impl DbHandle {
                 .collect::<String>();
             conn.execute_batch(&format!("PRAGMA key = \"x'{key_hex}'\";"))
                 .map_err(|e| CoreError::DatabaseError {
-                    message: e.to_string(),
+                    details: e.to_string(),
                     retryable: false,
                 })?;
         }
@@ -37,7 +37,7 @@ impl DbHandle {
             row.get::<_, i64>(0)
         })
         .map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
 
@@ -65,7 +65,7 @@ impl DbHandle {
             params![id, title, active_language, study_mode_default as i32, now_ms, now_ms],
         )
         .map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
         Ok(())
@@ -85,7 +85,7 @@ impl DbHandle {
             params![conversation_id, text, now_ms],
         )
         .map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
         Ok(())
@@ -96,21 +96,21 @@ impl DbHandle {
         let mut stmt = conn
             .prepare("SELECT draft_text FROM local_drafts WHERE conversation_id = ?1")
             .map_err(|e| CoreError::DatabaseError {
-                message: e.to_string(),
+                details: e.to_string(),
                 retryable: false,
             })?;
         let mut rows =
             stmt.query(params![conversation_id])
                 .map_err(|e| CoreError::DatabaseError {
-                    message: e.to_string(),
+                    details: e.to_string(),
                     retryable: false,
                 })?;
         if let Some(row) = rows.next().map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })? {
             let text: String = row.get(0).map_err(|e| CoreError::DatabaseError {
-                message: e.to_string(),
+                details: e.to_string(),
                 retryable: false,
             })?;
             Ok(Some(text))
@@ -141,7 +141,7 @@ impl DbHandle {
             ],
         )
         .map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
         Ok(())
@@ -158,7 +158,7 @@ impl DbHandle {
         };
 
         let mut stmt = conn.prepare(sql).map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
 
@@ -176,12 +176,12 @@ impl DbHandle {
                     })
                 })
                 .map_err(|e| CoreError::DatabaseError {
-                    message: e.to_string(),
+                    details: e.to_string(),
                     retryable: false,
                 })?;
             for r in rows {
                 list.push(r.map_err(|e| CoreError::DatabaseError {
-                    message: e.to_string(),
+                    details: e.to_string(),
                     retryable: false,
                 })?);
             }
@@ -197,12 +197,12 @@ impl DbHandle {
                     })
                 })
                 .map_err(|e| CoreError::DatabaseError {
-                    message: e.to_string(),
+                    details: e.to_string(),
                     retryable: false,
                 })?;
             for r in rows {
                 list.push(r.map_err(|e| CoreError::DatabaseError {
-                    message: e.to_string(),
+                    details: e.to_string(),
                     retryable: false,
                 })?);
             }

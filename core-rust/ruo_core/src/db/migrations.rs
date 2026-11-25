@@ -6,13 +6,13 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), CoreError> {
     let version: i32 = conn
         .query_row("PRAGMA user_version;", [], |row| row.get(0))
         .map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
 
     if version < 1 {
         let tx = conn.transaction().map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
 
@@ -59,12 +59,12 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), CoreError> {
             "#,
         )
         .map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
 
         tx.commit().map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
     }

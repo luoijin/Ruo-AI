@@ -35,6 +35,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Added backend container healthcheck, database connection parameters, and automatic Alembic migration execution to `infra/docker-compose.yml`.
 - Corrected the email sender description and tightened UniFFI, rusqlite, and Android toolchain verification notes.
 - Recorded Gemini streaming latency trials and verified the documented thinking-level controls.
+- Added the AndroidX annotation dependency required by generated UniFFI bindings and renamed exported Rust error payload fields to `details` to avoid Kotlin `Throwable.message` conflicts.
 
 ### Fixed
 - Fixed quota check-then-act TOCTOU race condition using a single atomic conditional upsert (`ON CONFLICT ... DO UPDATE ... WHERE request_count < limit RETURNING; zero rows = exhausted`) so quota limits are strictly enforced under concurrency without over-counting or over-allowing.
