@@ -6,4 +6,4 @@
 - **Last updated:** 2026-11-25
 - **Related docs:** [ANDROID_CLIENT](../docs/ANDROID_CLIENT.md), [FOLDER_STRUCTURE](../docs/FOLDER_STRUCTURE.md)
 
-The minimal `:app` and `:core:rustbridge` modules are a Gate 2 SQLCipher spike, not the Stage C app shell. CI has compiled the arm64 Rust library with SQLCipher and vendored OpenSSL and generated UniFFI Kotlin bindings; APK compilation is pending migration of generated-source registration to AGP 9's variant API. The instrumented checks still need to run on the owner's physical phone. See [ANDROID_CLIENT](../docs/ANDROID_CLIENT.md) and [RUST_CORE](../docs/RUST_CORE.md).
+The minimal `:app` and `:core:rustbridge` modules are a Gate 2 SQLCipher spike, not the Stage C app shell. CI run [45588157467](https://github.com/luoijin/Ruo-AI/actions/runs/45588157467) compiled the arm64 Rust library with SQLCipher and vendored OpenSSL, generated UniFFI Kotlin bindings, and assembled both APKs. The instrumented SQLCipher checks remain unrun because the physical phone disconnected before installation. See [ANDROID_CLIENT](../docs/ANDROID_CLIENT.md) and [RUST_CORE](../docs/RUST_CORE.md).
