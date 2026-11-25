@@ -1,12 +1,19 @@
 from datetime import datetime
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ConversationCreate(BaseModel):
+    conversation_id: str = Field(..., min_length=36, max_length=36)
     title: str = Field(default="Bagong Pag-uusap", min_length=1, max_length=255)
     active_language: str = Field(default="en")
     study_mode_default: bool = Field(default=False)
+
+    @field_validator("conversation_id")
+    @classmethod
+    def validate_conversation_id(cls, value: str) -> str:
+        return str(UUID(value))
 
 
 class ConversationUpdate(BaseModel):
@@ -22,6 +29,7 @@ class ConversationResponse(BaseModel):
     study_mode_default: bool
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None = None
 
 
 class MessageItem(BaseModel):
@@ -35,11 +43,8 @@ class MessageItem(BaseModel):
     study_step: int | None = None
     language: str | None = None
     model_used: str | None = None
+    status: str
     created_at: datetime
-
-
-class ConversationDetailResponse(ConversationResponse):
-    messages: list[MessageItem] = []
 
 
 class SendMessageRequest(BaseModel):

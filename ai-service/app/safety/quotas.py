@@ -17,6 +17,7 @@ async def check_and_increment_quota(
     tokens_in: int = 0,
     tokens_out: int = 0,
     upload_bytes: int = 0,
+    commit: bool = True,
 ) -> int:
     """Atomic quota check and increment (ADR-0007).
 
@@ -91,5 +92,6 @@ async def check_and_increment_quota(
             extra={"retry_after_sec": retry_after_sec},
         )
 
-    await session.commit()
+    if commit:
+        await session.commit()
     return row[0]
