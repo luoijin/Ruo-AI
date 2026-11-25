@@ -33,6 +33,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Removed unverified default model name from `GEMINI_FALLBACK_MODEL` (remains unconfigured until verified).
 - Added backend container healthcheck, database connection parameters, and automatic Alembic migration execution to `infra/docker-compose.yml`.
 - Corrected the email sender description and tightened UniFFI, rusqlite, and Android toolchain verification notes.
+- Recorded Gemini streaming latency trials and verified the documented thinking-level controls.
 
 ### Fixed
 - Fixed quota check-then-act TOCTOU race condition using a single atomic conditional upsert (`ON CONFLICT ... DO UPDATE ... WHERE request_count < limit RETURNING; zero rows = exhausted`) so quota limits are strictly enforced under concurrency without over-counting or over-allowing.
