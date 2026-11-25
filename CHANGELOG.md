@@ -42,6 +42,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Verified the Gate 2 SQLCipher/UniFFI build in CI and passed the key, encrypted-header, multilingual round-trip, and Kotlin callback test on a physical API 34 arm64 phone.
 - Added an explicit host-debug plain-SQLite logic-test mode, compile guards against Android/release use, a Linux SQLCipher test job, and a `gh`-based latest-library download script.
 - Preserved full server timestamp precision in local keyset pagination and added FFI instrumentation coverage for SQLCipher key errors, encrypted storage, callbacks, and stream cancellation.
+- Published the two Android instrumentation APKs as a separate CI artifact so device verification can fetch them without downloading the Rust library.
 
 ### Fixed
 - Fixed quota check-then-act TOCTOU race condition using a single atomic conditional upsert (`ON CONFLICT ... DO UPDATE ... WHERE request_count < limit RETURNING; zero rows = exhausted`) so quota limits are strictly enforced under concurrency without over-counting or over-allowing.
