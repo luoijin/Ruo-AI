@@ -1,3 +1,6 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("com.google.dagger.hilt.android")
@@ -6,7 +9,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
-val signingProperties = java.util.Properties().apply {
+val signingProperties = Properties().apply {
     val propertiesFile = rootProject.file("keystore.properties")
     if (propertiesFile.isFile) {
         propertiesFile.inputStream().use { load(it) }
@@ -19,7 +22,7 @@ fun signingValue(environmentName: String, propertyName: String): String? =
 
 val debugKeystorePath = signingValue("RUO_DEBUG_KEYSTORE_PATH", "storeFile")
 val debugKeystore = debugKeystorePath?.let { path ->
-    val candidate = java.io.File(path)
+    val candidate = File(path)
     if (candidate.isAbsolute) candidate else rootProject.file(path)
 }
 val debugStorePassword = signingValue("RUO_DEBUG_STORE_PASSWORD", "storePassword")
