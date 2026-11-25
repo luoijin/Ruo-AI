@@ -86,7 +86,7 @@ jobs:
         with:
           gradle-version: "9.5.0"
       - name: Build app and instrumented test APKs
-        run: gradle -p android --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+        run: gradle -p android --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Stage debug SQLCipher bridge artifacts
         run: |
           mkdir -p "$RUNNER_TEMP/ruo-ai-gate2/android/core/rustbridge/src/main/jniLibs/arm64-v8a"

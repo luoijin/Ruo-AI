@@ -24,7 +24,8 @@ Features 12 (feedback), 13 (deletion, export), 16 (outbox sync), 17 (settings), 
 9. Production access application after the 14-day closed test; staged rollout 10% → 50% → 100%. [v1]
 10. README demo video and portfolio packaging.
 11. Package third-party license texts and required attribution notices for SQLCipher, OpenSSL, and their bundled source crates.
-12. Add offline conversation edits and last-write-wins conflict resolution; Phase 1 edits remain server-first and online-only.
+12. Add offline conversation edits and last-write-wins conflict resolution; Phase 1 edits remain server-first and online-only. Add tests for offline edit, retry, and conflict behavior.
+13. Validate on an API 26 device and a low-RAM device before rollout. Tune the configured offline-cache bounds based on measured behavior; keep support claims open and block release if either target cannot be validated.
 
 ## Dependencies
 Phase 4; closed test completed (14 continuous days, 12+ testers); minors decision made.
@@ -32,11 +33,13 @@ Phase 4; closed test completed (14 continuous days, 12+ testers); minors decisio
 ## Acceptance criteria
 - Queued offline message syncs once, without duplicates.
 - Deletion removes all user data; export works.
+- Offline conversation edits are exercised against the documented conflict policy.
 - Accessibility checklist passed.
 - Production access applied for; staged rollout started.
+- API 26 and low-RAM device checks pass, or rollout remains blocked pending owner review.
 
 ## Test requirements
-Outbox state-transition and replay tests; deletion cascade test; Compose a11y tests; instrumented tests on a 4 GB RAM phone; load test before rollout.
+Outbox state-transition and replay tests; offline conversation-edit behavior tests; deletion cascade test; Compose a11y tests; instrumented tests on API 26 and a low-RAM phone; load test before rollout.
 
 ## Agent notes (pitfalls)
 - Deletion must be real and cascade through chunks and embeddings.

@@ -736,12 +736,12 @@ async fn decode_response<T: DeserializeOwned>(response: Response) -> Result<T, C
 
 async fn response_error(response: Response) -> CoreError {
     let status = response.status();
-    let payload = response.json::<ErrorPayload>().await.unwrap_or_default();
     if status == StatusCode::UNAUTHORIZED {
         return CoreError::Unauthenticated {
             details: "Sign-in is required".to_string(),
         };
     }
+    let payload = response.json::<ErrorPayload>().await.unwrap_or_default();
     let code = payload
         .code
         .as_deref()
@@ -1304,6 +1304,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unauthorized_response_is_unauthenticated_without_server_body() {
+        let secret = "unauthorized-response-echo";
+        let body = json!({
+            "code": "UNAUTHENTICATED",
+            "message": secret,
+            "detail": secret,
+        });
+        let route = warp::any().map(move || {
+            warp::reply::with_status(
+                warp::reply::json(&body),
+                warp::http::StatusCode::UNAUTHORIZED,
+            )
+        });
+        let (address, server) = warp::serve(route).bind_ephemeral(([127, 0, 0, 1], 0));
+        let server_task = tokio::spawn(server);
+        let response = Client::new()
+            .get(format!("http://{address}"))
+            .send()
+            .await
+            .unwrap();
+        let error = response_error(response).await;
+        server_task.abort();
+
+        assert!(matches!(
+            error,
+            CoreError::Unauthenticated { ref details } if details == "Sign-in is required"
+        ));
+        assert_eq!(error.code(), "UNAUTHENTICATED");
+        assert!(!format!("{error:?}").contains(secret));
+    }
+
+    #[tokio::test]
     async fn history_sync_requests_and_persists_server_tombstones() {
         use std::collections::HashMap;
 
@@ -1388,6 +1420,139 @@ mod tests {
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].id, "live");
         server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn sync_history_respects_configured_offline_cache_bounds() {
+        use std::collections::HashMap;
+
+        let requested_messages = Arc::new(Mutex::new(Vec::new()));
+        let requested_messages_route = Arc::clone(&requested_messages);
+        let request_limit_is_one = Arc::new(AtomicBool::new(false));
+        let request_limit_route = Arc::clone(&request_limit_is_one);
+        let conversations = warp::path!("v1" / "conversations")
+            .and(warp::get())
+            .and(warp::query::<HashMap<String, String>>())
+            .map(|_: HashMap<String, String>| {
+                warp::reply::json(&json!([
+                    {
+                        "id": "recent",
+                        "title": "Recent",
+                        "active_language": "en",
+                        "study_mode_default": false,
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "updated_at": "2026-01-03T00:00:00Z",
+                        "deleted_at": null
+                    },
+                    {
+                        "id": "older",
+                        "title": "Older",
+                        "active_language": "en",
+                        "study_mode_default": false,
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "updated_at": "2026-01-02T00:00:00Z",
+                        "deleted_at": null
+                    }
+                ]))
+            });
+        let messages = warp::path!("v1" / "conversations" / String / "messages")
+            .and(warp::get())
+            .and(warp::query::<HashMap<String, String>>())
+            .map(
+                move |conversation_id: String, query: HashMap<String, String>| {
+                    requested_messages_route
+                        .lock()
+                        .unwrap()
+                        .push(conversation_id.clone());
+                    request_limit_route.store(
+                        query.get("limit").map(String::as_str) == Some("1"),
+                        Ordering::SeqCst,
+                    );
+                    warp::reply::json(&json!([{
+                        "id": format!("server-{conversation_id}"),
+                        "conversation_id": conversation_id,
+                        "client_msg_id": format!("client-{conversation_id}"),
+                        "parent_message_id": null,
+                        "role": "user",
+                        "content_md": "cached",
+                        "citations_json": null,
+                        "status": "complete",
+                        "created_at": "2026-01-01T00:00:00Z"
+                    }]))
+                },
+            );
+        let (address, server) =
+            warp::serve(conversations.or(messages)).bind_ephemeral(([127, 0, 0, 1], 0));
+        let server_task = tokio::spawn(server);
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_file = temp_dir.path().join("offline_bounds.db");
+        let core = RuoCore::open(db_file.to_str().unwrap().to_string(), vec![0x42; 32]).unwrap();
+        core.set_session("test-token".to_string(), format!("http://{address}"), true)
+            .unwrap();
+        let listener = Arc::new(RecordingSyncListener {
+            completed: AtomicBool::new(false),
+            error_code: Mutex::new(None),
+        });
+
+        core.sync_history(
+            HistorySyncConfig {
+                conversation_page_size: 10,
+                message_page_size: 10,
+                offline_recent_conversations: 1,
+                offline_recent_messages_per_conversation: 1,
+            },
+            listener.clone(),
+        )
+        .unwrap();
+        for _ in 0..50 {
+            if listener.completed.load(Ordering::SeqCst)
+                || listener.error_code.lock().unwrap().is_some()
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+
+        assert!(listener.completed.load(Ordering::SeqCst));
+        assert!(listener.error_code.lock().unwrap().is_none());
+        assert!(request_limit_is_one.load(Ordering::SeqCst));
+        assert_eq!(*requested_messages.lock().unwrap(), vec!["recent"]);
+        assert_eq!(
+            core.list_messages("recent".to_string(), 10, None, None)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(core
+            .list_messages("older".to_string(), 10, None, None)
+            .unwrap()
+            .is_empty());
+        server_task.abort();
+    }
+
+    #[test]
+    fn sync_configuration_rejects_zero_offline_cache_bounds() {
+        let config = HistorySyncConfig {
+            conversation_page_size: 1,
+            message_page_size: 1,
+            offline_recent_conversations: 0,
+            offline_recent_messages_per_conversation: 1,
+        };
+        assert!(matches!(
+            validate_sync_config(config),
+            Err(CoreError::Validation { .. })
+        ));
+
+        let config = HistorySyncConfig {
+            conversation_page_size: 1,
+            message_page_size: 1,
+            offline_recent_conversations: 1,
+            offline_recent_messages_per_conversation: 0,
+        };
+        assert!(matches!(
+            validate_sync_config(config),
+            Err(CoreError::Validation { .. })
+        ));
     }
 
     #[tokio::test]
