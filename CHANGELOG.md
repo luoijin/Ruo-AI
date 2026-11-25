@@ -42,7 +42,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Verified the Gate 2 SQLCipher/UniFFI build in CI and passed the key, encrypted-header, multilingual round-trip, and Kotlin callback test on a physical API 34 arm64 phone.
 - Added an explicit host-debug plain-SQLite logic-test mode, compile guards against Android/release use, a Linux SQLCipher test job, and a `gh`-based latest-library download script.
 - Preserved full server timestamp precision in local keyset pagination and added FFI instrumentation coverage for SQLCipher key errors, encrypted storage, callbacks, and stream cancellation.
-- Made the local-change callback instrumentation subscribe before the draft write and report callback timeouts by stage.
+- Made the local-change callback instrumentation subscribe before the draft write, use unique mock server IDs across streams, and report failures by safe event type.
 - Published the two Android instrumentation APKs as a separate CI artifact so device verification can fetch them without downloading the Rust library.
 - Added device coverage for concurrent-stream conflicts and assistant persistence after SSE `done`; added a release-mode test that rejects loopback HTTP even when `allow_cleartext_debug` is true.
 - Kept the sync-only deleted-conversation flag out of Kotlin's `listConversations` API; the UI listing now returns active conversations only.

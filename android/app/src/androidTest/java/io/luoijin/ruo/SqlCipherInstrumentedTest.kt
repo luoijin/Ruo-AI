@@ -157,7 +157,18 @@ class SqlCipherInstrumentedTest {
                     content = "complete this response",
                 ),
             ).collect { completedEvents.add(it) }
-            assertTrue(completedEvents.any { it is StreamEvent.Done })
+            val completedEventKinds = completedEvents.map { event ->
+                when (event) {
+                    is StreamEvent.Meta -> "Meta"
+                    is StreamEvent.Delta -> "Delta"
+                    is StreamEvent.Done -> "Done"
+                    is StreamEvent.Error -> "Error:${event.failure.code}"
+                }
+            }
+            assertTrue(
+                "Expected Done; received $completedEventKinds",
+                completedEvents.any { it is StreamEvent.Done },
+            )
             val assistant = reopened.listMessages(conversationId, 20u)
                 .first { it.clientMsgId == completedClientMsgId && it.role == MessageRole.ASSISTANT }
             assertEquals(LocalMessageStatus.SENT, assistant.status)
@@ -261,6 +272,8 @@ private class LoopbackApiServer : AutoCloseable {
                     requestLine.contains("/messages ") -> {
                     val request = JSONObject(body)
                     val clientMsgId = request.getString("client_msg_id")
+                    val userMessageId = "server-user-$clientMsgId"
+                    val assistantMessageId = "server-assistant-$clientMsgId"
                     val output = it.getOutputStream()
                     output.write(
                         ("HTTP/1.1 200 OK\r\n" +
@@ -270,13 +283,13 @@ private class LoopbackApiServer : AutoCloseable {
                     )
                     output.write(
                         ("event: meta\ndata: {\"client_msg_id\":\"$clientMsgId\"," +
-                            "\"user_message_id\":\"server-user-id\"," +
-                            "\"assistant_message_id\":\"server-assistant-id\"}\n\n").toByteArray(),
+                            "\"user_message_id\":\"$userMessageId\"," +
+                            "\"assistant_message_id\":\"$assistantMessageId\"}\n\n").toByteArray(),
                     )
                     output.write("event: delta\ndata: {\"text\":\"Maayong buntag 🌱\"}\n\n".toByteArray())
                     if (request.getString("content") == "complete this response") {
                         output.write(
-                            "event: done\ndata: {\"assistant_message_id\":\"server-assistant-id\",\"replayed\":false}\n\n"
+                            "event: done\ndata: {\"assistant_message_id\":\"$assistantMessageId\",\"replayed\":false}\n\n"
                                 .toByteArray(),
                         )
                         output.flush()
