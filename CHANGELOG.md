@@ -50,6 +50,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Kept the sync-only deleted-conversation flag out of Kotlin's `listConversations` API; the UI listing now returns active conversations only.
 - Added the Gate 4 stable CI debug-signing-key plan, including repository-secret names, OAuth SHA-1 registration, and trusted-workflow handling. No signing key or workflow secret is committed.
 - Added HTTP 401 error-mapping coverage, listener teardown policy, backup-rule parsing and configured offline-cache boundary tests; tracked UI, compatibility, offline-edit, API 26, and low-RAM acceptance gaps in their phase docs.
+- Raised the app compile SDK to API 37 because the current Compose/Navigation artifacts require it; target SDK remains API 36.
 
 ### Fixed
 - Fixed quota check-then-act TOCTOU race condition using a single atomic conditional upsert (`ON CONFLICT ... DO UPDATE ... WHERE request_count < limit RETURNING; zero rows = exhausted`) so quota limits are strictly enforced under concurrency without over-counting or over-allowing.

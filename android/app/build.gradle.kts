@@ -36,7 +36,7 @@ val stableDebugSigningAvailable =
 
 android {
     namespace = "io.luoijin.ruo"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = "30.0.16248370"
 
     buildFeatures {

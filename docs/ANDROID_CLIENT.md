@@ -7,7 +7,7 @@
 - **Related docs:** [RUST_CORE](RUST_CORE.md), [ARCHITECTURE](ARCHITECTURE.md), [FOLDER_STRUCTURE](FOLDER_STRUCTURE.md), [../skills.md](../skills.md)
 
 ## Baseline [v1]
-Min SDK 26 (Android 8.0). The Gate 2 spike uses compile/target SDK 36. Google Play's 2026 target requirement and the exact AGP 9.3.1 / Gradle 9.5.0 / Kotlin 2.4.21 baseline are recorded in [VERIFY_BEFORE_BUILD](VERIFY_BEFORE_BUILD.md); generated Kotlin bindings compiled in CI and the SQLCipher integration test passed on a physical API 34 arm64 phone. See [ADR-0010](decisions/ADR-0010-sqlcipher-android-build.md).
+Min SDK 26 (Android 8.0). The app compiles against API 37 to satisfy the current Compose and Navigation dependency metadata while continuing to target API 36. Google Play's 2026 target requirement and the exact AGP 9.3.1 / Gradle 9.5.0 / Kotlin 2.4.21 baseline are recorded in [VERIFY_BEFORE_BUILD](VERIFY_BEFORE_BUILD.md); generated Kotlin bindings compiled in CI and the SQLCipher integration test passed on a physical API 34 arm64 phone. See [ADR-0010](decisions/ADR-0010-sqlcipher-android-build.md).
 
 ## Modules [v1]
 `:app` (application, activities, navigation) · `:core:ui` (design tokens, Markdown and code renderer, attachment preview, citation chips) · `:core:rustbridge` (UniFFI wrapper, Keystore key handling, Flow adapters) · `:feature:chat` · `:feature:camera` · `:feature:auth` · `:feature:settings`. Tree: [FOLDER_STRUCTURE](FOLDER_STRUCTURE.md).
