@@ -157,8 +157,8 @@ class SqlCipherInstrumentedTest {
             ).collect { completedEvents.add(it) }
             assertTrue(completedEvents.any { it is StreamEvent.Done })
             val assistant = reopened.listMessages(conversationId, 20u)
-                .first { it.clientMsgId == completedClientMsgId && it.role == MessageRole.Assistant }
-            assertEquals(LocalMessageStatus.Sent, assistant.status)
+                .first { it.clientMsgId == completedClientMsgId && it.role == MessageRole.ASSISTANT }
+            assertEquals(LocalMessageStatus.SENT, assistant.status)
             assertEquals("Maayong buntag 🌱", assistant.contentMd)
 
             context.getSharedPreferences("ruo_database_key", Context.MODE_PRIVATE)
