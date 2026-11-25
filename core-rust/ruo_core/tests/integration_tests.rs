@@ -38,7 +38,7 @@ fn test_outbox_state_transitions() {
 fn test_db_repositories_conversations_and_messages() {
     let temp_dir = tempfile::tempdir().unwrap();
     let db_path = temp_dir.path().join("repo_test.db");
-    let key = b"key_bytes_1234567890_abcdefghij".to_vec();
+    let key = vec![0x42; 32];
 
     let db = DbHandle::open(db_path.to_str().unwrap(), &key).unwrap();
 
@@ -124,7 +124,7 @@ async fn test_sse_mock_stream_and_cancel_mid_flight() {
 
     let temp_dir = tempfile::tempdir().unwrap();
     let db_path = temp_dir.path().join("mock_test.db");
-    let key = b"key_bytes_1234567890_abcdefghij".to_vec();
+    let key = vec![0x42; 32];
 
     let core = RuoCore::open(db_path.to_str().unwrap().to_string(), key).unwrap();
     core.create_conversation(
