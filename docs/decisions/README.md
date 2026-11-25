@@ -16,6 +16,7 @@
 - [ADR-0007](ADR-0007-postgres-queue-and-quotas.md) Postgres queue and quotas
 - [ADR-0008](ADR-0008-invite-only-beta.md) Invite-only beta
 - [ADR-0009](ADR-0009-uniffi-version-and-toolchain.md) UniFFI version and toolchain
+- [ADR-0010](ADR-0010-sqlcipher-android-build.md) SQLCipher Android build configuration (Accepted)
 
 ## Write a new ADR when
 - Changing or reopening a locked decision (needs owner approval).

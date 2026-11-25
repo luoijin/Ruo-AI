@@ -3,11 +3,11 @@
 - **Purpose:** Give any AI coding agent the rules, reading order and definition of done before it touches the repo.
 - **Audience:** AI coding agents and the owner.
 - **Status:** Draft
-- **Last updated:** 2026-11-23
+- **Last updated:** 2026-11-25
 - **Related docs:** [skills.md](skills.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [ROADMAP.md](ROADMAP.md), [docs/decisions/README.md](docs/decisions/README.md)
 
 ## Project summary and status
-Ruo AI is an Android-only AI assistant (students, self-learners; bilingual users on mid-range phones and flaky networks) for Google Play and a portfolio. Not an MVP: v1 is the full scope at release quality. **Status: documentation scaffold only; no application code yet. Next: Phase 1.**
+Ruo AI is an Android-only AI assistant (students, self-learners; bilingual users on mid-range phones and flaky networks) for Google Play and a portfolio. Not an MVP: v1 is the full scope at release quality. **Status: Phase 1 underway; Gate 1 is complete, and the Gate 2 SQLCipher/UniFFI Android spike is in progress.**
 
 ## Reading order
 1. This file → 2. [PRODUCT](docs/PRODUCT.md) → 3. [ARCHITECTURE](docs/ARCHITECTURE.md) → 4. [FOLDER_STRUCTURE](docs/FOLDER_STRUCTURE.md) → 5. the current [phase doc](docs/phases/PHASE-1-core-spine.md) → 6. the layer docs you touch ([ANDROID_CLIENT](docs/ANDROID_CLIENT.md), [RUST_CORE](docs/RUST_CORE.md), [API_CONTRACT](docs/API_CONTRACT.md), [DATA_MODEL](docs/DATA_MODEL.md), [AI_PIPELINE](docs/AI_PIPELINE.md), [SECURITY_PRIVACY](docs/SECURITY_PRIVACY.md)) → 7. the matching playbook in [skills.md](skills.md).
@@ -56,12 +56,13 @@ Ruo AI is an Android-only AI assistant (students, self-learners; bilingual users
 | Start backend stack | `docker compose -f infra/docker-compose.yml up` |
 | Backend tests | `pytest (in ai-service/)` |
 | Backend lint | `ruff check . && ruff format --check . (in ai-service/)` |
-| Rust tests | `cargo test (in core-rust/)` |
-| Rust lint | `cargo clippy --all-targets (in core-rust/)` |
-| Build Rust for Android | `TODO: cargo ndk ... (Phase 1 Stage B)` |
-| Generate UniFFI bindings | `TODO: uniffi-bindgen ... (Phase 1 Stage B)` |
-| Android build | `TODO: ./gradlew assembleDebug (Phase 1 Stage B)` |
-| Android tests | `TODO: ./gradlew test (Phase 1 Stage B)` |
+| Rust SQLCipher tests | `cargo test --all --no-default-features --features sqlcipher (in core-rust/)` |
+| Rust host logic tests (plain SQLite only; debug only) | `cargo test --all --no-default-features --features plain-sqlite-tests (in core-rust/; never for Android or release)` |
+| Rust lint | `cargo clippy --all-targets --no-default-features --features sqlcipher -- -D warnings (in core-rust/)` |
+| Build Rust for Android | GitHub Actions `android-build` job explicitly enables `sqlcipher` (NDK 30, arm64-v8a); run `powershell -File scripts\download-gate2-so.ps1 [-Branch <branch>]` to fetch the latest successful artifact (`gh auth login` required) |
+| Generate UniFFI bindings | `cargo run --locked --no-default-features --features bindgen-cli,sqlcipher --bin uniffi-bindgen -- generate <libruo_core.so> --language kotlin --out-dir <generated dir> (in core-rust/; picks up ruo_core/uniffi.toml)` |
+| Android build | `gradle -p android :app:assembleDebug` (JDK 17; Gradle 9.5.0) |
+| Android tests | `gradle -p android :app:connectedDebugAndroidTest` (physical arm64 device required) |
 | Migrations | `alembic upgrade head (in ai-service/)` |
 | Run evals | `TODO: pytest evals/ (Phase 1 Stage D)` |
 

@@ -2,18 +2,18 @@ use thiserror::Error;
 
 #[derive(Error, Debug, uniffi::Error)]
 pub enum CoreError {
-    #[error("Database error: {message}")]
-    DatabaseError { message: String, retryable: bool },
+    #[error("Database error: {details}")]
+    DatabaseError { details: String, retryable: bool },
 
-    #[error("Network error: {message}")]
-    NetworkError { message: String, retryable: bool },
+    #[error("Network error: {details}")]
+    NetworkError { details: String, retryable: bool },
 
-    #[error("Stream parse error: {message}")]
-    ParseError { message: String, retryable: bool },
+    #[error("Stream parse error: {details}")]
+    ParseError { details: String, retryable: bool },
 
-    #[error("Validation error: {message}")]
-    ValidationError { message: String },
+    #[error("Validation error: {details}")]
+    ValidationError { details: String },
 
-    #[error("Stream cancelled: {message}")]
-    Cancelled { message: String },
+    #[error("Stream cancelled: {details}")]
+    Cancelled { details: String },
 }

@@ -9,15 +9,39 @@ pub struct DbHandle {
 }
 
 impl DbHandle {
-    pub fn open(path: &str, _key: &[u8]) -> Result<Self, CoreError> {
-        // Open SQLite / SQLCipher connection
+    pub fn open(path: &str, key: &[u8]) -> Result<Self, CoreError> {
+        if key.len() != 32 {
+            return Err(CoreError::DatabaseError {
+                details: "Database key must be 32 bytes".to_string(),
+                retryable: false,
+            });
+        }
+
         let mut conn = Connection::open(path).map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
 
-        // In SQLCipher builds, PRAGMA key = ... is applied here.
-        // For host tests with bundled rusqlite, key is passed as raw bytes safely.
+        #[cfg(feature = "sqlcipher")]
+        {
+            let key_hex = key
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            conn.execute_batch(&format!("PRAGMA key = \"x'{key_hex}'\";"))
+                .map_err(|e| CoreError::DatabaseError {
+                    details: e.to_string(),
+                    retryable: false,
+                })?;
+        }
+        conn.query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .map_err(|e| CoreError::DatabaseError {
+            details: e.to_string(),
+            retryable: false,
+        })?;
+
         crate::db::migrations::run_migrations(&mut conn)?;
 
         Ok(Self {
@@ -42,7 +66,7 @@ impl DbHandle {
             params![id, title, active_language, study_mode_default as i32, now_ms, now_ms],
         )
         .map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
         Ok(())
@@ -62,7 +86,7 @@ impl DbHandle {
             params![conversation_id, text, now_ms],
         )
         .map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
         Ok(())
@@ -73,21 +97,21 @@ impl DbHandle {
         let mut stmt = conn
             .prepare("SELECT draft_text FROM local_drafts WHERE conversation_id = ?1")
             .map_err(|e| CoreError::DatabaseError {
-                message: e.to_string(),
+                details: e.to_string(),
                 retryable: false,
             })?;
         let mut rows =
             stmt.query(params![conversation_id])
                 .map_err(|e| CoreError::DatabaseError {
-                    message: e.to_string(),
+                    details: e.to_string(),
                     retryable: false,
                 })?;
         if let Some(row) = rows.next().map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })? {
             let text: String = row.get(0).map_err(|e| CoreError::DatabaseError {
-                message: e.to_string(),
+                details: e.to_string(),
                 retryable: false,
             })?;
             Ok(Some(text))
@@ -118,7 +142,7 @@ impl DbHandle {
             ],
         )
         .map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
         Ok(())
@@ -135,7 +159,7 @@ impl DbHandle {
         };
 
         let mut stmt = conn.prepare(sql).map_err(|e| CoreError::DatabaseError {
-            message: e.to_string(),
+            details: e.to_string(),
             retryable: false,
         })?;
 
@@ -153,12 +177,12 @@ impl DbHandle {
                     })
                 })
                 .map_err(|e| CoreError::DatabaseError {
-                    message: e.to_string(),
+                    details: e.to_string(),
                     retryable: false,
                 })?;
             for r in rows {
                 list.push(r.map_err(|e| CoreError::DatabaseError {
-                    message: e.to_string(),
+                    details: e.to_string(),
                     retryable: false,
                 })?);
             }
@@ -174,17 +198,67 @@ impl DbHandle {
                     })
                 })
                 .map_err(|e| CoreError::DatabaseError {
-                    message: e.to_string(),
+                    details: e.to_string(),
                     retryable: false,
                 })?;
             for r in rows {
                 list.push(r.map_err(|e| CoreError::DatabaseError {
-                    message: e.to_string(),
+                    details: e.to_string(),
                     retryable: false,
                 })?);
             }
         }
 
         Ok(list)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    #[cfg(feature = "sqlcipher")]
+    fn encrypted_database_round_trips_and_rejects_wrong_or_missing_keys() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("encrypted.db");
+        let key = [0x42; 32];
+        let expected = "Taglish: Kumusta, paano ito? Cebuano: Maayong buntag, unsaon ni? 🌱📚";
+
+        let db = DbHandle::open(db_path.to_str().unwrap(), &key).unwrap();
+        db.create_conversation("conv-1", "Study", "en", false)
+            .unwrap();
+        db.save_draft("conv-1", expected).unwrap();
+        drop(db);
+
+        let bytes = fs::read(&db_path).unwrap();
+        assert!(bytes.len() >= 16);
+        assert_ne!(&bytes[..16], b"SQLite format 3\0");
+
+        let db = DbHandle::open(db_path.to_str().unwrap(), &key).unwrap();
+        assert_eq!(db.get_draft("conv-1").unwrap().as_deref(), Some(expected));
+        drop(db);
+
+        let wrong_key = [0x24; 32];
+        assert!(DbHandle::open(db_path.to_str().unwrap(), &wrong_key).is_err());
+
+        let missing_key_path = temp_dir.path().join("missing-key.db");
+        assert!(DbHandle::open(missing_key_path.to_str().unwrap(), &[]).is_err());
+        assert!(!missing_key_path.exists());
+    }
+
+    #[test]
+    #[cfg(feature = "plain-sqlite-tests")]
+    fn logic_test_database_uses_plain_sqlite() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("logic-test.db");
+        let key = [0x42; 32];
+
+        let _db = DbHandle::open(db_path.to_str().unwrap(), &key).unwrap();
+        let bytes = fs::read(&db_path).unwrap();
+
+        assert!(bytes.len() >= 16);
+        assert_eq!(&bytes[..16], b"SQLite format 3\0");
     }
 }

@@ -4,12 +4,12 @@ pub fn validate_message_content(content: &str) -> Result<(), CoreError> {
     let trimmed = content.trim();
     if trimmed.is_empty() {
         return Err(CoreError::ValidationError {
-            message: "Message content cannot be empty".to_string(),
+            details: "Message content cannot be empty".to_string(),
         });
     }
     if trimmed.len() > 32_000 {
         return Err(CoreError::ValidationError {
-            message: "Message content exceeds maximum allowed length of 32,000 characters"
+            details: "Message content exceeds maximum allowed length of 32,000 characters"
                 .to_string(),
         });
     }
@@ -19,7 +19,7 @@ pub fn validate_message_content(content: &str) -> Result<(), CoreError> {
 pub fn validate_client_msg_id(client_msg_id: &str) -> Result<(), CoreError> {
     if client_msg_id.trim().is_empty() {
         return Err(CoreError::ValidationError {
-            message: "client_msg_id cannot be empty".to_string(),
+            details: "client_msg_id cannot be empty".to_string(),
         });
     }
     Ok(())

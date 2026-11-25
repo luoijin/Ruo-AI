@@ -7,6 +7,17 @@ edition = "2021"
 crate-type = ["cdylib", "lib"]
 name = "ruo_core"
 
+[features]
+default = ["sqlcipher"]
+sqlcipher = ["rusqlite/bundled-sqlcipher-vendored-openssl"]
+plain-sqlite-tests = ["rusqlite/bundled"]
+bindgen-cli = ["uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["bindgen-cli"]
+
 [dependencies]
 # Serialization and errors
 serde = { version = "1.0", features = ["derive"] }
@@ -19,11 +30,11 @@ tokio = { version = "1", features = ["sync", "time", "macros", "rt-multi-thread"
 futures-util = "0.3"
 
 # Database (SQLCipher / SQLite)
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.43.0", default-features = false }
 chrono = { version = "0.4", features = ["serde"] }
 
 # UniFFI for cross-language binding
-uniffi = { version = "0.28", features = ["tokio"] }
+uniffi = { version = "0.32.2", features = ["tokio"] }
 
 [dev-dependencies]
 tempfile = "3.10"
