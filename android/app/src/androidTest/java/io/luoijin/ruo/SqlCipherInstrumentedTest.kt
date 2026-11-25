@@ -40,7 +40,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SqlCipherInstrumentedTest {
     @Test
-    fun encryptedStoreCallbacksAndMidStreamCancellationWorkOnDevice() = runBlocking {
+    fun encryptedStoreCallbacksAndMidStreamCancellationWorkOnDevice() = runBlocking<Unit> {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val databaseFile = File(context.noBackupFilesDir, "ruo.db")
         val keyManager = DatabaseKeyManager(context)
