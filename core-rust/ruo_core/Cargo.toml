@@ -7,6 +7,14 @@ edition = "2021"
 crate-type = ["cdylib", "lib"]
 name = "ruo_core"
 
+[features]
+bindgen-cli = ["uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["bindgen-cli"]
+
 [dependencies]
 # Serialization and errors
 serde = { version = "1.0", features = ["derive"] }

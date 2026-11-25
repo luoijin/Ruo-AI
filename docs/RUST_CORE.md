@@ -3,7 +3,7 @@
 - **Purpose:** Define the headless Rust core: crate layout, UniFFI interface, threading, errors, build and testing.
 - **Audience:** Rust and Android engineers, agents.
 - **Status:** Draft
-- **Last updated:** 2026-11-23
+- **Last updated:** 2026-11-25
 - **Related docs:** [ANDROID_CLIENT](ANDROID_CLIENT.md), [API_CONTRACT](API_CONTRACT.md), [DATA_MODEL](DATA_MODEL.md), [../skills.md](../skills.md), [ADR-0002](decisions/ADR-0002-rust-uniffi-client-core.md)
 
 ## Responsibilities [v1]
@@ -14,8 +14,8 @@ Justification: reliability on the hardest client problems and a skills showcase.
 ## Crate layout
 See [FOLDER_STRUCTURE](FOLDER_STRUCTURE.md): `ruo_core` (cdylib, plus lib for tests) with modules `db`, `net`, `upload`, `outbox`, `validate`.
 
-## UniFFI interface (sketch, not final code)
-Shape only. **Check syntax against the docs for the UniFFI version you install (UNVERIFIED).** The core is an *object with a constructor*, not a trait. Callback interfaces use `with_foreign`.
+## UniFFI interface (spike, not frozen)
+The Gate 2 spike uses UniFFI 0.32.2 proc-macro mode; syntax follows the [0.32 proc-macro guide](https://mozilla.github.io/uniffi-rs/0.32/proc_macro/index.html). The core is an *object with a constructor*, not a trait. The Gate 3 interface freeze may refine this surface.
 ```rust
 #[derive(uniffi::Record)]
 pub struct LocalMessage {
@@ -27,18 +27,18 @@ pub struct LocalMessage {
     pub created_at_ms: i64,
 }
 
-#[uniffi::export(with_foreign)]
+#[uniffi::export(foreign)]
 pub trait StreamListener: Send + Sync {
+    fn on_meta(&self, message_id: String, detected_language: Option<String>, fallback: bool);
     fn on_delta(&self, message_id: String, text: String);
-    fn on_citation(&self, message_id: String, citation_json: String);
+    fn on_citation(&self, message_id: String, attachment_id: String, snippet: Option<String>);
     fn on_complete(&self, message_id: String);
     fn on_error(&self, message_id: String, code: String, retryable: bool);
 }
 
-#[uniffi::export(with_foreign)]
-pub trait UploadProgress: Send + Sync {
-    fn on_progress(&self, attachment_id: String, sent: u64, total: u64);
-    fn on_state(&self, attachment_id: String, state: String); // uploading | extracting | ready | failed
+#[uniffi::export(foreign)]
+pub trait DraftReadListener: Send + Sync {
+    fn on_draft_read(&self, conversation_id: String, text: String);
 }
 
 #[derive(uniffi::Object)]
@@ -49,36 +49,34 @@ impl RuoCore {
     #[uniffi::constructor]
     pub fn open(db_path: String, key: Vec<u8>) -> Result<std::sync::Arc<Self>, CoreError>;
     pub fn set_session(&self, access_token: String, base_url: String);
+    pub fn create_conversation(&self, id: String, title: String, active_language: String, study_mode_default: bool) -> Result<(), CoreError>;
     pub fn save_draft(&self, conversation_id: String, text: String) -> Result<(), CoreError>;
+    pub fn get_draft(&self, conversation_id: String) -> Result<Option<String>, CoreError>;
+    pub fn read_draft_with_listener(&self, conversation_id: String, listener: std::sync::Arc<dyn DraftReadListener>) -> Result<(), CoreError>;
     pub fn queue_message(&self, req: OutboundRequest) -> Result<LocalMessage, CoreError>;
     pub fn stream_message(&self, req: OutboundRequest, listener: std::sync::Arc<dyn StreamListener>);
-    pub fn upload_attachment(&self, file_path: String, mime: String, progress: std::sync::Arc<dyn UploadProgress>);
-    pub fn flush_outbox(&self) -> Result<u32, CoreError>;
+    pub fn cancel_stream(&self, message_id: String) -> bool;
     pub fn list_conversations(&self, query: Option<String>) -> Result<Vec<ConversationSummary>, CoreError>;
 }
 ```
-`OutboundRequest`, `ConversationSummary` and `CoreError` are defined in Phase 1. **Freeze this interface early** so UI work does not churn the bindings. Cancel support (needed by stop and screen exit) must be added to the interface in Phase 1 (**gap:** the sketch has no cancel method; see [OPEN_QUESTIONS](OPEN_QUESTIONS.md) Q10).
+`OutboundRequest`, `ConversationSummary` and `CoreError` are defined in Phase 1. The spike requires a 32-byte database key; Gate 3 will review and freeze the complete interface before app-shell work.
 
 ## Threading rules
 - The core owns an async runtime; exported calls return quickly or run on it.
-- Callbacks run on a Rust thread. The Kotlin wrapper must hop to the main dispatcher before touching UI state.
+- Asynchronous stream callbacks run on a Tokio worker thread; synchronous callbacks may run on the calling thread. The Kotlin wrapper must hop to the main dispatcher before touching UI state.
 - Never block the main thread across the FFI boundary.
 
 ## Key handling
-The DB key is passed as raw bytes from Android Keystore. Rust never stores or persists it; zeroize buffers where practical.
+The DB key is passed as raw bytes from Android Keystore. The spike rejects keys not exactly 32 bytes, applies SQLCipher's raw-key pragma before the first DB read, and probes `sqlite_master` so a wrong key fails before migrations. Rust does not persist the key and clears the owned constructor buffer after opening; zeroize additional temporary buffers where practical.
 
 ## Error handling
 One `CoreError` enum exported over UniFFI; errors carry a stable code and a `retryable` flag. Stream errors surface through `on_error`; never panic across the FFI boundary.
 
 ## Build with cargo-ndk
-1. Install Rust targets for the ABIs you ship (arm64-v8a first; add others only if needed for disk and testing).
-2. Build with `cargo ndk -t <abi> -o <jniLibs dir> build --release` (flags **UNVERIFIED**; check the cargo-ndk README for the installed version).
-3. Generate Kotlin bindings with the UniFFI bindgen for the installed version.
-4. Output `.so` goes to `android/core/rustbridge/src/main/jniLibs/` (gitignored).
-Scripts live in `core-rust/scripts/`.
+The Gate 2 CI job pins `cargo-ndk` 4.1.2 and NDK `30.0.16248370`, targets only `aarch64-linux-android` at API 26, and places the `.so` in `android/core/rustbridge/src/main/jniLibs/arm64-v8a/` (gitignored). Its commands follow the [cargo-ndk 4.1.2 README](https://github.com/bbqsrc/cargo-ndk/blob/v4.1.2/README.md). It then generates Kotlin bindings with UniFFI 0.32.2 and compiles debug and instrumented-test APKs using the versions in [VERIFY_BEFORE_BUILD](VERIFY_BEFORE_BUILD.md). This workflow and the Android SQLCipher build are **UNVERIFIED** until CI passes.
 
 ## Testing
-Unit tests: SSE framing, reconnect backoff, outbox transitions, migrations, upload resume. FFI tests (Android instrumented): Taglish, Cebuano and emoji strings, mid-flight cancel, error propagation. See [TESTING_EVALS](TESTING_EVALS.md).
+Unit tests: SSE framing, reconnect backoff, outbox transitions, migrations, upload resume, and SQLCipher key/header behavior. The Gate 2 Android instrumented test checks Keystore-wrapped key round-trip, wrong/missing keys, encrypted header, multilingual draft persistence, and a Kotlin callback. These device checks have not run yet. Mid-stream cancel remains part of Gate 3. See [TESTING_EVALS](TESTING_EVALS.md).
 
 ## Risk: SQLCipher with OpenSSL on Android
-Highest build risk. Spike in Phase 1 week one ([PHASE-1](phases/PHASE-1-core-spine.md)). Record the working configuration in an ADR once found.
+Highest build risk. The CI build and physical-phone checks are still pending. If the vendored-OpenSSL SQLCipher build fails, stop and report options; do not fall back to unencrypted storage. Record the verified working configuration in an ADR after the phone test passes.

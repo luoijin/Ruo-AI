@@ -3,11 +3,11 @@
 - **Purpose:** Specify the client's modules, patterns, navigation, composer, offline behavior, permissions, accessibility and visual direction.
 - **Audience:** Android engineers and agents.
 - **Status:** Draft
-- **Last updated:** 2026-11-23
+- **Last updated:** 2026-11-25
 - **Related docs:** [RUST_CORE](RUST_CORE.md), [ARCHITECTURE](ARCHITECTURE.md), [FOLDER_STRUCTURE](FOLDER_STRUCTURE.md), [../skills.md](../skills.md)
 
 ## Baseline [v1]
-Min SDK 26 (Android 8.0). Target and compile SDK: the current stable level supported by the Compose BOM in use (**UNVERIFIED**, see [VERIFY_BEFORE_BUILD](VERIFY_BEFORE_BUILD.md)).
+Min SDK 26 (Android 8.0). The Gate 2 spike uses compile/target SDK 36. Google Play's 2026 target requirement and the exact AGP 9.3.1 / Gradle 9.5.0 / Kotlin 2.4.21 baseline are recorded in [VERIFY_BEFORE_BUILD](VERIFY_BEFORE_BUILD.md); successful Kotlin binding compilation remains pending CI.
 
 ## Modules [v1]
 `:app` (application, activities, navigation) · `:core:ui` (design tokens, Markdown and code renderer, attachment preview, citation chips) · `:core:rustbridge` (UniFFI wrapper, Keystore key handling, Flow adapters) · `:feature:chat` · `:feature:camera` · `:feature:auth` · `:feature:settings`. Tree: [FOLDER_STRUCTURE](FOLDER_STRUCTURE.md).

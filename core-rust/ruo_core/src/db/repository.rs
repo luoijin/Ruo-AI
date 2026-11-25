@@ -22,15 +22,17 @@ impl DbHandle {
             retryable: false,
         })?;
 
-        let key_hex = key
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>();
-        conn.execute_batch(&format!("PRAGMA key = \"x'{key_hex}'\";"))
-            .map_err(|e| CoreError::DatabaseError {
-                message: e.to_string(),
-                retryable: false,
-            })?;
+        {
+            let key_hex = key
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            conn.execute_batch(&format!("PRAGMA key = \"x'{key_hex}'\";"))
+                .map_err(|e| CoreError::DatabaseError {
+                    message: e.to_string(),
+                    retryable: false,
+                })?;
+        }
         conn.query_row("SELECT count(*) FROM sqlite_master", [], |row| {
             row.get::<_, i64>(0)
         })
