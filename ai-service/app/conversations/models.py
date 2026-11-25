@@ -32,7 +32,7 @@ class Conversation(Base):
         "Message", back_populates="conversation", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (Index("idx_conv_user_updated", "user_id", "updated_at"),)
+    __table_args__ = (Index("idx_conv_user_updated", "user_id", "updated_at", "id"),)
 
 
 class Message(Base):
@@ -50,8 +50,12 @@ class Message(Base):
     study_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
     language: Mapped[str | None] = mapped_column(String(10), nullable=True)
     model_used: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="complete", server_default="complete", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
 
-    __table_args__ = (Index("idx_msg_conv_created", "conversation_id", "created_at"),)
+    __table_args__ = (Index("idx_msg_conv_created", "conversation_id", "created_at", "id"),)

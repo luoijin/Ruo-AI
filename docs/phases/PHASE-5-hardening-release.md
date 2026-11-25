@@ -24,6 +24,7 @@ Features 12 (feedback), 13 (deletion, export), 16 (outbox sync), 17 (settings), 
 9. Production access application after the 14-day closed test; staged rollout 10% → 50% → 100%. [v1]
 10. README demo video and portfolio packaging.
 11. Package third-party license texts and required attribution notices for SQLCipher, OpenSSL, and their bundled source crates.
+12. Add offline conversation edits and last-write-wins conflict resolution; Phase 1 edits remain server-first and online-only.
 
 ## Dependencies
 Phase 4; closed test completed (14 continuous days, 12+ testers); minors decision made.

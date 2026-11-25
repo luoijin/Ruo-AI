@@ -8,6 +8,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.auth.service import create_access_token, hash_token
+from app.conversations.schemas import SendMessageRequest
+from app.conversations.service import stream_chat_messages
 from app.core.config import (
     DEV_GOOGLE_CLIENT_ID_PLACEHOLDER,
     DEV_JWT_SECRET_PLACEHOLDER,
@@ -17,8 +19,9 @@ from app.core.config import (
 from app.core.database import async_session_maker
 from app.core.errors import AppException
 from app.main import app
-from app.models.all_models import EmailOtp, Invite, UsageLog, User
+from app.models.all_models import Conversation, EmailOtp, Invite, Message, UsageLog, User
 from app.providers.base import ChatRequest
+from app.providers.fake import FakeProvider
 from app.providers.gemini import GeminiProvider
 from app.safety.quotas import check_and_increment_quota
 
@@ -179,7 +182,11 @@ async def test_conversations_and_chat_streaming_with_fake_provider(client: Async
     c_resp = await client.post(
         "/v1/conversations",
         headers=headers,
-        json={"title": "Algebra Review", "active_language": "tl-PH"},
+        json={
+            "conversation_id": str(uuid.uuid4()),
+            "title": "Algebra Review",
+            "active_language": "tl-PH",
+        },
     )
     assert c_resp.status_code == 200
     conv_id = c_resp.json()["id"]
@@ -199,6 +206,10 @@ async def test_conversations_and_chat_streaming_with_fake_provider(client: Async
     assert "event: meta" in body
     assert "event: delta" in body
     assert "event: done" in body
+    meta = json.loads(body.split("event: meta\ndata: ", 1)[1].split("\n", 1)[0])
+    assert meta["client_msg_id"] == client_msg_id
+    assert meta["user_message_id"]
+    assert meta["assistant_message_id"]
 
     # Retry idempotency: exact same client_msg_id
     retry_resp = await client.post(
@@ -212,7 +223,161 @@ async def test_conversations_and_chat_streaming_with_fake_provider(client: Async
     assert retry_resp.status_code == 200
     retry_body = retry_resp.text
     assert "event: meta" in retry_body
-    assert '"cached": true' in retry_body
+    assert '"replayed": true' in retry_body
+
+    messages_resp = await client.get(f"/v1/conversations/{conv_id}/messages", headers=headers, params={"limit": 1})
+    assert messages_resp.status_code == 200
+    assert len(messages_resp.json()) == 1
+    newest = messages_resp.json()[0]
+    older_resp = await client.get(
+        f"/v1/conversations/{conv_id}/messages",
+        headers=headers,
+        params={"limit": 1, "before_created_at": newest["created_at"], "before_id": newest["id"]},
+    )
+    assert older_resp.status_code == 200
+    assert len(older_resp.json()) == 1
+
+
+@pytest.mark.asyncio
+async def test_conversation_create_is_idempotent_and_owner_scoped(client: AsyncClient):
+    user_ids = [f"conv_create_{uuid.uuid4().hex[:8]}" for _ in range(2)]
+    async with async_session_maker() as session:
+        session.add_all(
+            [
+                User(id=user_ids[0], email=f"{user_ids[0]}@example.com"),
+                User(id=user_ids[1], email=f"{user_ids[1]}@example.com"),
+            ]
+        )
+        await session.commit()
+
+    token, _ = create_access_token(user_ids[0])
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = str(uuid.uuid4())
+    payload = {"conversation_id": conversation_id, "title": "Idempotent"}
+    responses = await asyncio.gather(
+        *[client.post("/v1/conversations", headers=headers, json=payload) for _ in range(2)]
+    )
+    assert [response.status_code for response in responses] == [200, 200]
+    assert [response.json()["id"] for response in responses] == [conversation_id, conversation_id]
+
+    other_token, _ = create_access_token(user_ids[1])
+    conflict = await client.post(
+        "/v1/conversations",
+        headers={"Authorization": f"Bearer {other_token}"},
+        json=payload,
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["code"] == "CONVERSATION_ID_CONFLICT"
+
+    async with async_session_maker() as session:
+        rows = await session.scalars(select(Conversation).where(Conversation.id == conversation_id))
+        assert len(rows.all()) == 1
+
+
+@pytest.mark.asyncio
+async def test_conversation_keyset_and_delete_tombstone(client: AsyncClient):
+    user_id = f"conv_sync_{uuid.uuid4().hex[:8]}"
+    async with async_session_maker() as session:
+        session.add(User(id=user_id, email=f"{user_id}@example.com"))
+        await session.commit()
+
+    token, _ = create_access_token(user_id)
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_ids = [str(uuid.UUID(int=1)), str(uuid.UUID(int=2))]
+    for conversation_id in conversation_ids:
+        response = await client.post(
+            "/v1/conversations",
+            headers=headers,
+            json={"conversation_id": conversation_id, "title": "Sync page"},
+        )
+        assert response.status_code == 200
+
+    shared_updated_at = datetime.now(UTC).replace(tzinfo=None)
+    async with async_session_maker() as session:
+        for conversation_id in conversation_ids:
+            conversation = await session.get(Conversation, conversation_id)
+            assert conversation is not None
+            conversation.updated_at = shared_updated_at
+        await session.commit()
+
+    first_page = await client.get("/v1/conversations", headers=headers, params={"limit": 1})
+    assert first_page.status_code == 200
+    first = first_page.json()[0]
+    assert first["id"] == max(conversation_ids)
+    second_page = await client.get(
+        "/v1/conversations",
+        headers=headers,
+        params={
+            "limit": 1,
+            "before_updated_at": first["updated_at"],
+            "before_id": first["id"],
+        },
+    )
+    assert second_page.status_code == 200
+    assert second_page.json()[0]["id"] == min(conversation_ids)
+
+    deleted = await client.delete(f"/v1/conversations/{first['id']}", headers=headers)
+    assert deleted.status_code == 200
+    normal_list = await client.get("/v1/conversations", headers=headers, params={"limit": 10})
+    assert all(row["id"] != first["id"] for row in normal_list.json())
+    sync_list = await client.get(
+        "/v1/conversations",
+        headers=headers,
+        params={"limit": 10, "include_deleted": "true"},
+    )
+    tombstone = next(row for row in sync_list.json() if row["id"] == first["id"])
+    assert tombstone["deleted_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_midstream_retry_waits_then_replays_without_duplicate_rows(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr("app.conversations.service.get_model_provider", lambda: FakeProvider(delay_sec=0))
+    user_id = f"stream_retry_{uuid.uuid4().hex[:8]}"
+    async with async_session_maker() as session:
+        session.add(User(id=user_id, email=f"{user_id}@example.com"))
+        await session.commit()
+
+    token, _ = create_access_token(user_id)
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = str(uuid.uuid4())
+    create = await client.post(
+        "/v1/conversations",
+        headers=headers,
+        json={"conversation_id": conversation_id, "title": "Retry"},
+    )
+    assert create.status_code == 200
+    client_msg_id = f"retry-{uuid.uuid4().hex}"
+    request = SendMessageRequest(client_msg_id=client_msg_id, content="Tell me about fractions.")
+
+    async with async_session_maker() as first_session:
+        first_stream = stream_chat_messages(first_session, user_id, conversation_id, request)
+        assert "event: meta" in await anext(first_stream)
+        assert "event: delta" in await anext(first_stream)
+
+        async with async_session_maker() as retry_session:
+            retry_stream = stream_chat_messages(retry_session, user_id, conversation_id, request)
+            retry_body = "".join([event async for event in retry_stream])
+        assert "STREAM_IN_PROGRESS" in retry_body
+        assert "retry_after_sec" in retry_body
+
+        first_body = "".join([event async for event in first_stream])
+        assert "event: done" in first_body
+
+    async with async_session_maker() as replay_session:
+        replay_stream = stream_chat_messages(replay_session, user_id, conversation_id, request)
+        replay_body = "".join([event async for event in replay_stream])
+    assert '"replayed": true' in replay_body
+
+    async with async_session_maker() as session:
+        rows = await session.scalars(
+            select(Message).where(Message.client_msg_id.in_([client_msg_id, f"asst_{client_msg_id}"]))
+        )
+        assert len(rows.all()) == 2
+        usage = await session.scalar(
+            select(UsageLog).where(UsageLog.user_id == user_id, UsageLog.usage_date == datetime.now(UTC).date())
+        )
+        assert usage is not None
+        assert usage.request_count == 1
 
 
 @pytest.mark.asyncio
@@ -227,7 +392,11 @@ async def test_self_harm_calm_refusal_moderation(client: AsyncClient):
     token, _ = create_access_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
 
-    c_resp = await client.post("/v1/conversations", headers=headers, json={"title": "Test Crisis"})
+    c_resp = await client.post(
+        "/v1/conversations",
+        headers=headers,
+        json={"conversation_id": str(uuid.uuid4()), "title": "Test Crisis"},
+    )
     conv_id = c_resp.json()["id"]
 
     s_resp = await client.post(
@@ -261,7 +430,11 @@ async def test_quota_exceeded_and_sse_error(client: AsyncClient):
     token, _ = create_access_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
 
-    c_resp = await client.post("/v1/conversations", headers=headers, json={"title": "Quota Test"})
+    c_resp = await client.post(
+        "/v1/conversations",
+        headers=headers,
+        json={"conversation_id": str(uuid.uuid4()), "title": "Quota Test"},
+    )
     conv_id = c_resp.json()["id"]
 
     s_resp = await client.post(
