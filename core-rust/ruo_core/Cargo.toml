@@ -8,6 +8,9 @@ crate-type = ["cdylib", "lib"]
 name = "ruo_core"
 
 [features]
+default = ["sqlcipher"]
+sqlcipher = ["rusqlite/bundled-sqlcipher-vendored-openssl"]
+plain-sqlite-tests = ["rusqlite/bundled"]
 bindgen-cli = ["uniffi/cli"]
 
 [[bin]]
@@ -27,7 +30,7 @@ tokio = { version = "1", features = ["sync", "time", "macros", "rt-multi-thread"
 futures-util = "0.3"
 
 # Database (SQLCipher / SQLite)
-rusqlite = { version = "0.43.0", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "0.43.0", default-features = false }
 chrono = { version = "0.4", features = ["serde"] }
 
 # UniFFI for cross-language binding

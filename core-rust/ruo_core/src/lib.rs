@@ -1,3 +1,15 @@
+#[cfg(all(feature = "sqlcipher", feature = "plain-sqlite-tests"))]
+compile_error!("Choose either `sqlcipher` or `plain-sqlite-tests`, not both.");
+
+#[cfg(not(any(feature = "sqlcipher", feature = "plain-sqlite-tests")))]
+compile_error!("Enable `sqlcipher` or the host-only `plain-sqlite-tests` feature.");
+
+#[cfg(all(feature = "plain-sqlite-tests", target_os = "android"))]
+compile_error!("`plain-sqlite-tests` is forbidden on Android targets.");
+
+#[cfg(all(feature = "plain-sqlite-tests", not(debug_assertions)))]
+compile_error!("`plain-sqlite-tests` is forbidden in release builds.");
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::broadcast;

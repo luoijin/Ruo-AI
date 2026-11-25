@@ -22,6 +22,7 @@ impl DbHandle {
             retryable: false,
         })?;
 
+        #[cfg(feature = "sqlcipher")]
         {
             let key_hex = key
                 .iter()
@@ -218,6 +219,7 @@ mod tests {
     use std::fs;
 
     #[test]
+    #[cfg(feature = "sqlcipher")]
     fn encrypted_database_round_trips_and_rejects_wrong_or_missing_keys() {
         let temp_dir = tempfile::tempdir().unwrap();
         let db_path = temp_dir.path().join("encrypted.db");
@@ -244,5 +246,19 @@ mod tests {
         let missing_key_path = temp_dir.path().join("missing-key.db");
         assert!(DbHandle::open(missing_key_path.to_str().unwrap(), &[]).is_err());
         assert!(!missing_key_path.exists());
+    }
+
+    #[test]
+    #[cfg(feature = "plain-sqlite-tests")]
+    fn logic_test_database_uses_plain_sqlite() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("logic-test.db");
+        let key = [0x42; 32];
+
+        let _db = DbHandle::open(db_path.to_str().unwrap(), &key).unwrap();
+        let bytes = fs::read(&db_path).unwrap();
+
+        assert!(bytes.len() >= 16);
+        assert_eq!(&bytes[..16], b"SQLite format 3\0");
     }
 }

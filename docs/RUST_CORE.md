@@ -67,7 +67,9 @@ impl RuoCore {
 - Never block the main thread across the FFI boundary.
 
 ## Key handling
-The DB key is passed as raw bytes from Android Keystore. The spike rejects keys not exactly 32 bytes, applies SQLCipher's raw-key pragma before the first DB read, and probes `sqlite_master` so a wrong key fails before migrations. Rust does not persist the key and clears the owned constructor buffer after opening; zeroize additional temporary buffers where practical.
+The DB key is passed as raw bytes from Android Keystore. Production builds default to the `sqlcipher` feature, which rejects keys not exactly 32 bytes, applies SQLCipher's raw-key pragma before the first DB read, and probes `sqlite_master` so a wrong key fails before migrations. Rust does not persist the key and clears the owned constructor buffer after opening; zeroize additional temporary buffers where practical.
+
+For host-only logic testing on machines without Perl/OpenSSL build tools, run `cargo test --all --no-default-features --features plain-sqlite-tests` from `core-rust`. This explicitly uses bundled plain SQLite and does not test encryption. Compile-time guards reject this feature on Android and in release builds; do not use it for application data. The Linux CI SQLCipher job runs the full encryption tests separately.
 
 ## Error handling
 One `CoreError` enum exported over UniFFI; error payload text is exposed as `details` (not `message`, which collides with Kotlin's `Throwable.message`) alongside a stable code and `retryable` flag. Stream errors surface through `on_error`; never panic across the FFI boundary.
@@ -76,7 +78,7 @@ One `CoreError` enum exported over UniFFI; error payload text is exposed as `det
 The Gate 2 CI job pins `cargo-ndk` 4.1.2 and NDK `30.0.16248370`, targets only `aarch64-linux-android` at API 26, and places the `.so` in `android/core/rustbridge/src/main/jniLibs/arm64-v8a/` (gitignored). Its commands follow the [cargo-ndk 4.1.2 README](https://github.com/bbqsrc/cargo-ndk/blob/v4.1.2/README.md). CI run [45588157467](https://github.com/luoijin/Ruo-AI/actions/runs/45588157467) successfully compiled the arm64 SQLCipher/OpenSSL library, generated UniFFI 0.32.2 Kotlin bindings, and assembled debug and instrumentation APKs. The on-device test passed on API 34 arm64; the exact verified configuration is recorded in [ADR-0010](decisions/ADR-0010-sqlcipher-android-build.md). See [VERIFY_BEFORE_BUILD](VERIFY_BEFORE_BUILD.md).
 
 ## Testing
-Unit tests: SSE framing, reconnect backoff, outbox transitions, migrations, upload resume, and SQLCipher key/header behavior. The Gate 2 Android instrumented test passed on API 34 arm64, covering Keystore-wrapped key round-trip, wrong/missing keys, encrypted header, multilingual draft persistence, and a Kotlin callback. Mid-stream cancel remains part of Gate 3. See [TESTING_EVALS](TESTING_EVALS.md).
+Unit tests: SSE framing, reconnect backoff, outbox transitions, migrations, upload resume, and SQLCipher key/header behavior. `cargo test --all --no-default-features --features sqlcipher` runs the full encryption suite; `cargo test --all --no-default-features --features plain-sqlite-tests` runs host-only logic tests against plain SQLite. The Gate 2 Android instrumented test passed on API 34 arm64, covering Keystore-wrapped key round-trip, wrong/missing keys, encrypted header, multilingual draft persistence, and a Kotlin callback. Mid-stream cancel remains part of Gate 3. See [TESTING_EVALS](TESTING_EVALS.md).
 
 ## Risk: SQLCipher with OpenSSL on Android
 The vendored-OpenSSL SQLCipher build and physical-phone checks passed for the configuration recorded in [ADR-0010](decisions/ADR-0010-sqlcipher-android-build.md). Do not fall back to unencrypted storage. The ADR remains Proposed pending owner approval; Gate 3 is not authorized by this verification.

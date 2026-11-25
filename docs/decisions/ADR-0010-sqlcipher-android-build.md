@@ -10,7 +10,7 @@
 
 ## Context
 
-The local Rust database must use SQLCipher; plain SQLite is not an acceptable fallback. Gate 2 also requires a working Android UniFFI binding and proof on a physical arm64 phone that the key, ciphertext header, multilingual text, and Kotlin callback behave as intended.
+Application data must use SQLCipher; plain SQLite is not an acceptable app fallback. A separate, explicit host-debug feature is permitted only to run logic tests without SQLCipher and is guarded against Android and release builds. Gate 2 also requires a working Android UniFFI binding and proof on a physical arm64 phone that the key, ciphertext header, multilingual text, and Kotlin callback behave as intended.
 
 CI run [45588157467](https://github.com/luoijin/Ruo-AI/actions/runs/45588157467) built the native library and APKs. The instrumented SQLCipher test passed on a physical API 34 `arm64-v8a` device on 2026-11-25.
 
@@ -19,6 +19,7 @@ CI run [45588157467](https://github.com/luoijin/Ruo-AI/actions/runs/45588157467)
 Use the following configuration for the Gate 2 SQLCipher bridge:
 
 - `rusqlite` 0.43.0 with `default-features = false` and `bundled-sqlcipher-vendored-openssl`; the corresponding `libsqlite3-sys` 0.40.0 feature graph enables vendored OpenSSL.
+- SQLCipher is the default Rust feature for normal, Android, and release builds. The explicit `plain-sqlite-tests` feature is only for host debug logic tests; compile-time guards reject it on Android and in release builds.
 - Build only `aarch64-linux-android` / `arm64-v8a`, API 26, with NDK `30.0.16248370` and `cargo-ndk` 4.1.2.
 - Use UniFFI 0.32.2 proc-macro bindings; generate Kotlin from the Android `.so`.
 - Build with Java 17, AGP 9.3.1, Gradle 9.5.0, and Kotlin 2.4.21 as AGP's runtime dependency while using AGP built-in Kotlin. Register generated Kotlin sources through `androidComponents` variant sources.
@@ -31,7 +32,7 @@ The on-device instrumentation test verifies that the correct key reopens the enc
 
 - The arm64 NDK build, UniFFI Kotlin generation, APK assembly, and the specified phone test have passed.
 - This validates one API 34 arm64 device; behavior on other Android versions and hardware remains **UNVERIFIED**.
-- SQLCipher remains mandatory; no unencrypted fallback is permitted.
+- SQLCipher remains mandatory for Android and release builds; no unencrypted fallback is permitted. Plain bundled SQLite is isolated to the guarded host debug test feature and is not suitable for application data.
 - This ADR does not freeze the complete UniFFI interface or authorize Gate 3 work.
 
 ## Sources
