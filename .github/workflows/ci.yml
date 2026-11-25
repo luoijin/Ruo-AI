@@ -96,7 +96,7 @@ jobs:
           set -euo pipefail
 
           keystore_path="$RUNNER_TEMP/ruo-debug-ci.keystore"
-          certificate_path="$RUNNER_TEMP/ruo-debug-ci-certificate.pem"
+          certificate_path="$RUNNER_TEMP/ruo-debug-ci-certificate.cer"
           cleanup() {
             rm -f "$keystore_path" "$certificate_path"
           }
@@ -123,14 +123,33 @@ jobs:
             apk_path="android/app/build/outputs/apk/debug/app-debug.apk"
             apksigner="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
             test -n "$apksigner"
-            openssl pkcs12 -in "$keystore_path" -passin env:RUO_DEBUG_STORE_PASSWORD \
-              -clcerts -nokeys -out "$certificate_path"
 
-            expected_sha1="$(openssl x509 -in "$certificate_path" -noout -fingerprint -sha1 | sed 's/.*=//' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-            actual_sha1="$("$apksigner" verify --print-certs "$apk_path" | awk '/Signer #1 certificate SHA-1 digest:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-            expected_sha256="$(openssl x509 -in "$certificate_path" -noout -fingerprint -sha256 | sed 's/.*=//' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-            actual_sha256="$("$apksigner" verify --print-certs "$apk_path" | awk '/Signer #1 certificate SHA-256 digest:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+            # Export the certificate for the configured alias. openssl pkcs12 emits
+            # every certificate in the keystore, so its first entry is not
+            # guaranteed to be the signing alias; keytool selects it explicitly.
+            keytool -exportcert \
+              -alias "$RUO_DEBUG_KEY_ALIAS" \
+              -keystore "$keystore_path" \
+              -storepass "$RUO_DEBUG_STORE_PASSWORD" \
+              -file "$certificate_path" >/dev/null
+            expected_fingerprints="$(keytool -printcert -file "$certificate_path")"
+            expected_sha1="$(printf '%s\n' "$expected_fingerprints" | awk '/SHA1:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+            expected_sha256="$(printf '%s\n' "$expected_fingerprints" | awk '/SHA256:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
 
+            apk_certificates="$("$apksigner" verify --print-certs "$apk_path" 2>&1)"
+            printf '%s\n' "$apk_certificates"
+            actual_sha1="$(printf '%s\n' "$apk_certificates" | awk '/Signer #1 certificate SHA-1 digest:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+            actual_sha256="$(printf '%s\n' "$apk_certificates" | awk '/Signer #1 certificate SHA-256 digest:/ {print $NF; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+
+            echo "Expected debug signer SHA-1:   ${expected_sha1:-<unavailable>}"
+            echo "Actual debug signer SHA-1:     ${actual_sha1:-<unavailable>}"
+            echo "Expected debug signer SHA-256: ${expected_sha256:-<unavailable>}"
+            echo "Actual debug signer SHA-256:   ${actual_sha256:-<unavailable>}"
+
+            if [[ -z "$expected_sha1" || -z "$expected_sha256" ]]; then
+              echo "::error::Could not read the expected certificate for alias '$RUO_DEBUG_KEY_ALIAS' from the debug keystore."
+              exit 1
+            fi
             if [[ -z "$actual_sha1" || "$actual_sha1" != "$expected_sha1" ||
                   -z "$actual_sha256" || "$actual_sha256" != "$expected_sha256" ]]; then
               echo "::error::Debug APK signer does not match the configured keystore certificate."

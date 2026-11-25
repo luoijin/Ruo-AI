@@ -53,6 +53,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Pinned Compose BOM 2026.06.01 and Navigation Compose 2.9.8 to keep Gate 4A compatible with the installed API 36 SDK.
 
 ### Fixed
+- Fixed the Android CI debug APK signer check to compare against the certificate for the configured key alias instead of the first certificate in the keystore, which could block stable debug APK publication for Gate 4A device validation.
 - Fixed quota check-then-act TOCTOU race condition using a single atomic conditional upsert (`ON CONFLICT ... DO UPDATE ... WHERE request_count < limit RETURNING; zero rows = exhausted`) so quota limits are strictly enforced under concurrency without over-counting or over-allowing.
 
 ### Security
