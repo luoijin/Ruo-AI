@@ -1,29 +1,26 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParsedEvent {
     Meta {
-        message_id: String,
+        client_msg_id: String,
+        user_message_id: String,
+        assistant_message_id: String,
         detected_language: Option<String>,
         study_step: Option<i32>,
-        model: Option<String>,
         fallback: bool,
+        replayed: bool,
     },
     Delta {
         text: String,
     },
-    Citation {
-        attachment_id: String,
-        page: Option<i32>,
-        snippet: Option<String>,
-    },
     Done {
-        finish_reason: Option<String>,
+        assistant_message_id: String,
+        replayed: bool,
     },
     Error {
         code: String,
-        message: String,
+        retryable: bool,
         retry_after_sec: Option<u64>,
     },
     Unknown {
@@ -34,39 +31,39 @@ pub enum ParsedEvent {
 
 #[derive(Default)]
 pub struct SseParser {
-    buffer: String,
+    buffer: Vec<u8>,
 }
 
 impl SseParser {
     pub fn new() -> Self {
-        Self {
-            buffer: String::new(),
-        }
+        Self { buffer: Vec::new() }
     }
 
     pub fn feed(&mut self, chunk: &str) -> Vec<ParsedEvent> {
-        self.buffer.push_str(chunk);
+        self.feed_bytes(chunk.as_bytes())
+    }
+
+    pub fn feed_bytes(&mut self, chunk: &[u8]) -> Vec<ParsedEvent> {
+        self.buffer.extend_from_slice(chunk);
         let mut events = Vec::new();
-
-        while let Some(pos) = self.buffer.find("\n\n") {
-            let block = self.buffer[..pos].to_string();
-            self.buffer = self.buffer[pos + 2..].to_string();
-
-            if let Some(ev) = self.parse_block(&block) {
-                events.push(ev);
+        while let Some((start, delimiter_len)) = find_delimiter(&self.buffer) {
+            let block = self.buffer[..start].to_vec();
+            self.buffer.drain(..start + delimiter_len);
+            if let Some(event) = self.parse_block(&block) {
+                events.push(event);
             }
         }
         events
     }
 
-    fn parse_block(&self, block: &str) -> Option<ParsedEvent> {
+    fn parse_block(&self, block: &[u8]) -> Option<ParsedEvent> {
+        let block = String::from_utf8_lossy(block).replace("\r\n", "\n");
         let mut event_type = "message";
         let mut data_lines = Vec::new();
 
         for line in block.lines() {
-            let line = line.trim_end_matches('\r');
             if line.starts_with(':') {
-                continue; // SSE comment
+                continue;
             }
             if let Some(stripped) = line.strip_prefix("event:") {
                 event_type = stripped.trim();
@@ -78,98 +75,96 @@ impl SseParser {
         if data_lines.is_empty() {
             return None;
         }
-
         let data = data_lines.join("\n");
 
         match event_type {
             "meta" => {
                 #[derive(Deserialize)]
                 struct MetaPayload {
-                    message_id: String,
+                    client_msg_id: String,
+                    user_message_id: String,
+                    assistant_message_id: String,
                     detected_language: Option<String>,
                     study_step: Option<i32>,
-                    model: Option<String>,
                     #[serde(default)]
                     fallback: bool,
+                    #[serde(default)]
+                    replayed: bool,
                 }
-                if let Ok(m) = serde_json::from_str::<MetaPayload>(&data) {
-                    Some(ParsedEvent::Meta {
-                        message_id: m.message_id,
-                        detected_language: m.detected_language,
-                        study_step: m.study_step,
-                        model: m.model,
-                        fallback: m.fallback,
+                serde_json::from_str::<MetaPayload>(&data)
+                    .ok()
+                    .map(|payload| ParsedEvent::Meta {
+                        client_msg_id: payload.client_msg_id,
+                        user_message_id: payload.user_message_id,
+                        assistant_message_id: payload.assistant_message_id,
+                        detected_language: payload.detected_language,
+                        study_step: payload.study_step,
+                        fallback: payload.fallback,
+                        replayed: payload.replayed,
                     })
-                } else {
-                    Some(ParsedEvent::Unknown {
-                        event: event_type.to_string(),
-                        data,
+                    .or_else(|| {
+                        Some(ParsedEvent::Unknown {
+                            event: event_type.to_string(),
+                            data,
+                        })
                     })
-                }
             }
             "delta" => {
                 #[derive(Deserialize)]
                 struct DeltaPayload {
                     text: String,
                 }
-                if let Ok(d) = serde_json::from_str::<DeltaPayload>(&data) {
-                    Some(ParsedEvent::Delta { text: d.text })
-                } else {
-                    Some(ParsedEvent::Unknown {
-                        event: event_type.to_string(),
-                        data,
+                serde_json::from_str::<DeltaPayload>(&data)
+                    .ok()
+                    .map(|payload| ParsedEvent::Delta { text: payload.text })
+                    .or_else(|| {
+                        Some(ParsedEvent::Unknown {
+                            event: event_type.to_string(),
+                            data,
+                        })
                     })
-                }
-            }
-            "citation" => {
-                #[derive(Deserialize)]
-                struct CitationPayload {
-                    attachment_id: String,
-                    page: Option<i32>,
-                    snippet: Option<String>,
-                }
-                if let Ok(c) = serde_json::from_str::<CitationPayload>(&data) {
-                    Some(ParsedEvent::Citation {
-                        attachment_id: c.attachment_id,
-                        page: c.page,
-                        snippet: c.snippet,
-                    })
-                } else {
-                    Some(ParsedEvent::Unknown {
-                        event: event_type.to_string(),
-                        data,
-                    })
-                }
             }
             "done" => {
                 #[derive(Deserialize)]
                 struct DonePayload {
-                    finish_reason: Option<String>,
+                    assistant_message_id: String,
+                    #[serde(default)]
+                    replayed: bool,
                 }
-                let finish_reason = serde_json::from_str::<DonePayload>(&data)
+                serde_json::from_str::<DonePayload>(&data)
                     .ok()
-                    .and_then(|p| p.finish_reason);
-                Some(ParsedEvent::Done { finish_reason })
+                    .map(|payload| ParsedEvent::Done {
+                        assistant_message_id: payload.assistant_message_id,
+                        replayed: payload.replayed,
+                    })
+                    .or_else(|| {
+                        Some(ParsedEvent::Unknown {
+                            event: event_type.to_string(),
+                            data,
+                        })
+                    })
             }
             "error" => {
                 #[derive(Deserialize)]
                 struct ErrorPayload {
                     code: String,
-                    message: String,
+                    #[serde(default)]
+                    retryable: bool,
                     retry_after_sec: Option<u64>,
                 }
-                if let Ok(e) = serde_json::from_str::<ErrorPayload>(&data) {
-                    Some(ParsedEvent::Error {
-                        code: e.code,
-                        message: e.message,
-                        retry_after_sec: e.retry_after_sec,
+                serde_json::from_str::<ErrorPayload>(&data)
+                    .ok()
+                    .map(|payload| ParsedEvent::Error {
+                        code: payload.code,
+                        retryable: payload.retryable,
+                        retry_after_sec: payload.retry_after_sec,
                     })
-                } else {
-                    Some(ParsedEvent::Unknown {
-                        event: event_type.to_string(),
-                        data,
+                    .or_else(|| {
+                        Some(ParsedEvent::Unknown {
+                            event: event_type.to_string(),
+                            data,
+                        })
                     })
-                }
             }
             _ => Some(ParsedEvent::Unknown {
                 event: event_type.to_string(),
@@ -179,47 +174,86 @@ impl SseParser {
     }
 }
 
+fn find_delimiter(buffer: &[u8]) -> Option<(usize, usize)> {
+    for (index, window) in buffer.windows(2).enumerate() {
+        if window == b"\n\n" {
+            return Some((index, 2));
+        }
+    }
+    for (index, window) in buffer.windows(4).enumerate() {
+        if window == b"\r\n\r\n" {
+            return Some((index, 4));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_sse_chunked_parsing() {
+    fn parses_meta_delta_and_done_events_across_chunks() {
         let mut parser = SseParser::new();
-        let ev1 = parser.feed("event: meta\ndata: {\"message_id\":\"m1\",\"detected_language\":\"tl-PH\",\"fallback\":false}\n\n");
-        assert_eq!(ev1.len(), 1);
-        match &ev1[0] {
-            ParsedEvent::Meta {
-                message_id,
-                detected_language,
-                fallback,
-                ..
-            } => {
-                assert_eq!(message_id, "m1");
-                assert_eq!(detected_language.as_deref(), Some("tl-PH"));
-                assert!(!fallback);
-            }
-            _ => panic!("Expected Meta event"),
-        }
+        let meta = parser.feed(
+            "event: meta\ndata: {\"client_msg_id\":\"client-1\",\"user_message_id\":\"user-1\",\"assistant_message_id\":\"assistant-1\",\"detected_language\":\"tl-PH\",\"fallback\":false}\n\n",
+        );
+        assert_eq!(
+            meta,
+            vec![ParsedEvent::Meta {
+                client_msg_id: "client-1".to_string(),
+                user_message_id: "user-1".to_string(),
+                assistant_message_id: "assistant-1".to_string(),
+                detected_language: Some("tl-PH".to_string()),
+                study_step: None,
+                fallback: false,
+                replayed: false,
+            }]
+        );
 
-        // Test chunk split across feeds
-        let ev2 = parser.feed("event: delta\nda");
-        assert_eq!(ev2.len(), 0);
+        assert!(parser
+            .feed("event: delta\ndata: {\"text\":\"Kumusta ")
+            .is_empty());
+        let delta = parser.feed("🌱\"}\n\n");
+        assert_eq!(
+            delta,
+            vec![ParsedEvent::Delta {
+                text: "Kumusta 🌱".to_string()
+            }]
+        );
+        assert_eq!(
+            parser.feed("event: done\ndata: {\"assistant_message_id\":\"assistant-1\",\"replayed\":true}\n\n"),
+            vec![ParsedEvent::Done {
+                assistant_message_id: "assistant-1".to_string(),
+                replayed: true,
+            }]
+        );
+    }
 
-        let ev3 = parser.feed("ta: {\"text\":\"Kumusta!\"}\n\n");
-        assert_eq!(ev3.len(), 1);
-        match &ev3[0] {
-            ParsedEvent::Delta { text } => assert_eq!(text, "Kumusta!"),
-            _ => panic!("Expected Delta event"),
-        }
+    #[test]
+    fn preserves_multibyte_text_split_inside_a_utf8_codepoint() {
+        let mut parser = SseParser::new();
+        let mut bytes = b"event: delta\ndata: {\"text\":\"".to_vec();
+        bytes.extend_from_slice(&[0xF0, 0x9F]);
+        assert!(parser.feed_bytes(&bytes).is_empty());
+        assert_eq!(
+            parser.feed_bytes(&[0x8C, 0xB1, b'"', b'}', b'\n', b'\n']),
+            vec![ParsedEvent::Delta {
+                text: "🌱".to_string()
+            }]
+        );
+    }
 
-        let ev4 = parser.feed("event: done\ndata: {\"finish_reason\":\"stop\"}\n\n");
-        assert_eq!(ev4.len(), 1);
-        match &ev4[0] {
-            ParsedEvent::Done { finish_reason } => {
-                assert_eq!(finish_reason.as_deref(), Some("stop"))
-            }
-            _ => panic!("Expected Done event"),
-        }
+    #[test]
+    fn ignores_server_error_message_and_parses_only_machine_fields() {
+        let mut parser = SseParser::new();
+        assert_eq!(
+            parser.feed("event: error\ndata: {\"code\":\"RATE_LIMIT_EXCEEDED\",\"message\":\"private input echoed\",\"retryable\":true,\"retry_after_sec\":7}\n\n"),
+            vec![ParsedEvent::Error {
+                code: "RATE_LIMIT_EXCEEDED".to_string(),
+                retryable: true,
+                retry_after_sec: Some(7),
+            }]
+        );
     }
 }

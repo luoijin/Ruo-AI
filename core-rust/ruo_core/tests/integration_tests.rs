@@ -1,10 +1,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::Mutex;
 
 use ruo_core::db::DbHandle;
-use ruo_core::models::{LocalMessage, OutboundRequest};
+use ruo_core::error::CoreError;
+use ruo_core::models::{
+    LocalMessage, LocalMessageStatus, MessageRole, OutboundRequest, StreamMeta,
+};
 use ruo_core::outbox::{OutboxItem, OutboxStatus};
 use ruo_core::{RuoCore, StreamListener};
 
@@ -39,64 +41,71 @@ fn test_db_repositories_conversations_and_messages() {
     let temp_dir = tempfile::tempdir().unwrap();
     let db_path = temp_dir.path().join("repo_test.db");
     let key = vec![0x42; 32];
-
     let db = DbHandle::open(db_path.to_str().unwrap(), &key).unwrap();
-
-    // Create 2 conversations
     db.create_conversation("c1", "Biology", "en", false)
         .unwrap();
     db.create_conversation("c2", "Calculus Integrals", "tl-PH", true)
         .unwrap();
 
-    // Search
-    let list_all = db.list_conversations(None).unwrap();
+    let list_all = db.list_conversations(None, 50, None, None, false).unwrap();
     assert_eq!(list_all.len(), 2);
-
-    let list_filtered = db.list_conversations(Some("Calculus")).unwrap();
+    let list_filtered = db
+        .list_conversations(Some("Calculus"), 50, None, None, false)
+        .unwrap();
     assert_eq!(list_filtered.len(), 1);
     assert_eq!(list_filtered[0].title, "Calculus Integrals");
 
-    // Insert messages
-    let msg1 = LocalMessage {
+    let message = LocalMessage {
         id: "m1".to_string(),
+        server_id: None,
         conversation_id: "c1".to_string(),
-        role: "user".to_string(),
+        client_msg_id: Some("m1".to_string()),
+        role: MessageRole::User,
         content_md: "What is mitosis?".to_string(),
-        status: "sent".to_string(),
+        status: LocalMessageStatus::Sent,
         citations_json: None,
+        parent_message_id: None,
         created_at_ms: 1000,
+        created_at_us: 1_000_000,
     };
-    db.insert_message(&msg1).unwrap();
-
-    // Message upsert/update
-    let mut msg1_updated = msg1.clone();
-    msg1_updated.status = "delivered".to_string();
-    db.insert_message(&msg1_updated).unwrap();
+    db.insert_message(&message).unwrap();
+    let mut updated = message.clone();
+    updated.status = LocalMessageStatus::Failed;
+    db.insert_message(&updated).unwrap();
+    assert_eq!(
+        db.list_messages("c1", 10, None, None).unwrap()[0].status,
+        LocalMessageStatus::Failed
+    );
 }
 
 struct TestStreamListener {
-    pub received_deltas: Arc<Mutex<Vec<String>>>,
-    pub completed: Arc<AtomicBool>,
-    pub error_code: Arc<Mutex<Option<String>>>,
+    received_deltas: Mutex<Vec<String>>,
+    completed: AtomicBool,
+    error_code: Mutex<Option<String>>,
+    metadata: Mutex<Option<StreamMeta>>,
 }
 
 impl StreamListener for TestStreamListener {
-    fn on_meta(&self, _message_id: String, _detected_language: Option<String>, _fallback: bool) {}
-    fn on_delta(&self, _message_id: String, text: String) {
-        let deltas = Arc::clone(&self.received_deltas);
-        tokio::spawn(async move {
-            deltas.lock().await.push(text);
-        });
+    fn on_meta(&self, _: String, meta: StreamMeta) {
+        if let Ok(mut value) = self.metadata.lock() {
+            *value = Some(meta);
+        }
     }
-    fn on_citation(&self, _message_id: String, _attachment_id: String, _snippet: Option<String>) {}
-    fn on_complete(&self, _message_id: String) {
+
+    fn on_delta(&self, _: String, text: String) {
+        if let Ok(mut values) = self.received_deltas.lock() {
+            values.push(text);
+        }
+    }
+
+    fn on_done(&self, _: String, _: String, _: bool) {
         self.completed.store(true, Ordering::SeqCst);
     }
-    fn on_error(&self, _message_id: String, code: String, _retryable: bool) {
-        let err = Arc::clone(&self.error_code);
-        tokio::spawn(async move {
-            *err.lock().await = Some(code);
-        });
+
+    fn on_error(&self, _: String, error: CoreError) {
+        if let Ok(mut value) = self.error_code.lock() {
+            *value = Some(error.code().to_string());
+        }
     }
 }
 
@@ -104,71 +113,76 @@ impl StreamListener for TestStreamListener {
 async fn test_sse_mock_stream_and_cancel_mid_flight() {
     use warp::Filter;
 
-    // Start a mock SSE server
     let sse_route = warp::path!("v1" / "conversations" / String / "messages")
         .and(warp::post())
-        .map(|_conv_id| {
+        .map(|_conversation_id| {
             let stream = async_stream::stream! {
-                yield Ok::<_, warp::Error>(warp::sse::Event::default().event("meta").data(r#"{"message_id":"msg-mock","fallback":false}"#));
-                for i in 1..=10 {
+                yield Ok::<_, warp::Error>(warp::sse::Event::default().event("meta").data(
+                    r#"{"client_msg_id":"stream-to-cancel","user_message_id":"user-server-id","assistant_message_id":"assistant-server-id","fallback":false}"#,
+                ));
+                for index in 1..=10 {
                     tokio::time::sleep(Duration::from_millis(100)).await;
-                    yield Ok::<_, warp::Error>(warp::sse::Event::default().event("delta").data(format!(r#"{{"text":"Chunk {i} "}}"#)));
+                    yield Ok::<_, warp::Error>(warp::sse::Event::default().event("delta").data(
+                        format!(r#"{{"text":"Chunk {index} "}}"#),
+                    ));
                 }
-                yield Ok::<_, warp::Error>(warp::sse::Event::default().event("done").data(r#"{"finish_reason":"stop"}"#));
+                yield Ok::<_, warp::Error>(warp::sse::Event::default().event("done").data(
+                    r#"{"assistant_message_id":"assistant-server-id","replayed":false}"#,
+                ));
             };
             warp::sse::reply(warp::sse::keep_alive().stream(stream))
         });
 
-    let (addr, server) = warp::serve(sse_route).bind_ephemeral(([127, 0, 0, 1], 0));
+    let (address, server) = warp::serve(sse_route).bind_ephemeral(([127, 0, 0, 1], 0));
     tokio::spawn(server);
 
     let temp_dir = tempfile::tempdir().unwrap();
     let db_path = temp_dir.path().join("mock_test.db");
     let key = vec![0x42; 32];
-
+    {
+        let db = DbHandle::open(db_path.to_str().unwrap(), &key).unwrap();
+        db.create_conversation("c-mock", "Mock", "en", false)
+            .unwrap();
+    }
     let core = RuoCore::open(db_path.to_str().unwrap().to_string(), key).unwrap();
-    core.create_conversation(
-        "c-mock".to_string(),
-        "Mock".to_string(),
-        "en".to_string(),
-        false,
-    )
-    .unwrap();
-    core.set_session("mock-token".to_string(), format!("http://{}", addr));
-
-    let deltas = Arc::new(Mutex::new(Vec::new()));
-    let completed = Arc::new(AtomicBool::new(false));
-    let error_code = Arc::new(Mutex::new(None));
+    core.set_session("mock-token".to_string(), format!("http://{address}"), true)
+        .unwrap();
 
     let listener = Arc::new(TestStreamListener {
-        received_deltas: Arc::clone(&deltas),
-        completed: Arc::clone(&completed),
-        error_code: Arc::clone(&error_code),
+        received_deltas: Mutex::new(Vec::new()),
+        completed: AtomicBool::new(false),
+        error_code: Mutex::new(None),
+        metadata: Mutex::new(None),
     });
+    core.stream_message(
+        OutboundRequest {
+            client_msg_id: "stream-to-cancel".to_string(),
+            conversation_id: "c-mock".to_string(),
+            content: "Please start streaming".to_string(),
+            parent_message_id: None,
+            attachment_ids: vec![],
+            intent: None,
+            study_mode: false,
+        },
+        listener.clone(),
+    )
+    .unwrap();
 
-    let req = OutboundRequest {
-        client_msg_id: "stream-to-cancel".to_string(),
-        conversation_id: "c-mock".to_string(),
-        content: "Please start streaming".to_string(),
-        parent_message_id: None,
-        attachment_ids: vec![],
-        intent: None,
-        study_mode: false,
-    };
-
-    core.stream_message(req, listener).unwrap();
-
-    // Let 1 or 2 chunks arrive
     tokio::time::sleep(Duration::from_millis(250)).await;
+    assert!(core.cancel_stream("stream-to-cancel".to_string()));
+    for _ in 0..20 {
+        if listener.error_code.lock().unwrap().as_deref() == Some("CANCELLED") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
 
-    // Trigger cancel mid-stream
-    let cancelled = core.cancel_stream("stream-to-cancel".to_string());
-    assert!(cancelled);
-
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    // Should have reported CANCELLED error
-    let err = error_code.lock().await;
-    assert_eq!(err.as_deref(), Some("CANCELLED"));
-    assert!(!completed.load(Ordering::SeqCst));
+    assert_eq!(
+        listener.error_code.lock().unwrap().as_deref(),
+        Some("CANCELLED")
+    );
+    assert!(!listener.completed.load(Ordering::SeqCst));
+    assert!(listener.metadata.lock().unwrap().is_some());
+    assert!(!listener.received_deltas.lock().unwrap().is_empty());
+    assert!(!core.cancel_stream("stream-to-cancel".to_string()));
 }

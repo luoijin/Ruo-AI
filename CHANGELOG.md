@@ -30,7 +30,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Architecture decision record [ADR-0009](docs/decisions/ADR-0009-uniffi-version-and-toolchain.md) establishing UniFFI 0.32.2 as the Android bridge baseline.
 - Minimal Android `:app` / `:core:rustbridge` SQLCipher spike, arm64 NDK/UniFFI/APK CI build, and on-device instrumentation checks for encrypted storage and callbacks.
 - Accepted [ADR-0010](docs/decisions/ADR-0010-sqlcipher-android-build.md), recording the verified Android SQLCipher/OpenSSL build, artifact size, and third-party notice requirements.
-- Proposed the Phase 1 UniFFI interface and ownership, streaming, storage, and versioning rules in [RUST_CORE](docs/RUST_CORE.md); no bindings or app code changed.
+- Froze Phase 1 UniFFI interface v1 and implemented `:core:rustbridge` with Keystore-wrapped SQLCipher keys, Kotlin Flow adapters, and dispatcher hops; no Compose screens were added.
 - Added the approved Gate 3 interface conditions: client-generated conversation IDs, keyset sync cursors and tombstones, stream ID semantics, sign-out/key-loss policy, safe errors, and Phase 1 online-only conversation edits.
 
 ### Changed
@@ -41,6 +41,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Added the AndroidX annotation dependency required by generated UniFFI bindings and renamed exported Rust error payload fields to `details` to avoid Kotlin `Throwable.message` conflicts.
 - Verified the Gate 2 SQLCipher/UniFFI build in CI and passed the key, encrypted-header, multilingual round-trip, and Kotlin callback test on a physical API 34 arm64 phone.
 - Added an explicit host-debug plain-SQLite logic-test mode, compile guards against Android/release use, a Linux SQLCipher test job, and a `gh`-based latest-library download script.
+- Preserved full server timestamp precision in local keyset pagination and added FFI instrumentation coverage for SQLCipher key errors, encrypted storage, callbacks, and stream cancellation.
 
 ### Fixed
 - Fixed quota check-then-act TOCTOU race condition using a single atomic conditional upsert (`ON CONFLICT ... DO UPDATE ... WHERE request_count < limit RETURNING; zero rows = exhausted`) so quota limits are strictly enforced under concurrency without over-counting or over-allowing.

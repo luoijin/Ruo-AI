@@ -3,12 +3,12 @@ use crate::error::CoreError;
 pub fn validate_message_content(content: &str) -> Result<(), CoreError> {
     let trimmed = content.trim();
     if trimmed.is_empty() {
-        return Err(CoreError::ValidationError {
+        return Err(CoreError::Validation {
             details: "Message content cannot be empty".to_string(),
         });
     }
-    if trimmed.len() > 32_000 {
-        return Err(CoreError::ValidationError {
+    if trimmed.chars().count() > 32_000 {
+        return Err(CoreError::Validation {
             details: "Message content exceeds maximum allowed length of 32,000 characters"
                 .to_string(),
         });
@@ -18,7 +18,7 @@ pub fn validate_message_content(content: &str) -> Result<(), CoreError> {
 
 pub fn validate_client_msg_id(client_msg_id: &str) -> Result<(), CoreError> {
     if client_msg_id.trim().is_empty() {
-        return Err(CoreError::ValidationError {
+        return Err(CoreError::Validation {
             details: "client_msg_id cannot be empty".to_string(),
         });
     }

@@ -7,7 +7,7 @@
 - **Related docs:** [skills.md](skills.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [ROADMAP.md](ROADMAP.md), [docs/decisions/README.md](docs/decisions/README.md)
 
 ## Project summary and status
-Ruo AI is an Android-only AI assistant (students, self-learners; bilingual users on mid-range phones and flaky networks) for Google Play and a portfolio. Not an MVP: v1 is the full scope at release quality. **Status: Phase 1 underway; Gate 1 is complete, and the Gate 2 SQLCipher/UniFFI Android spike is in progress.**
+Ruo AI is an Android-only AI assistant (students, self-learners; bilingual users on mid-range phones and flaky networks) for Google Play and a portfolio. Not an MVP: v1 is the full scope at release quality. **Status: Phase 1 underway; Gate 1 and the Gate 2 SQLCipher/UniFFI Android spike are complete; Gate 3B is implementing the Rust/Kotlin bridge. No Compose screens yet.**
 
 ## Reading order
 1. This file → 2. [PRODUCT](docs/PRODUCT.md) → 3. [ARCHITECTURE](docs/ARCHITECTURE.md) → 4. [FOLDER_STRUCTURE](docs/FOLDER_STRUCTURE.md) → 5. the current [phase doc](docs/phases/PHASE-1-core-spine.md) → 6. the layer docs you touch ([ANDROID_CLIENT](docs/ANDROID_CLIENT.md), [RUST_CORE](docs/RUST_CORE.md), [API_CONTRACT](docs/API_CONTRACT.md), [DATA_MODEL](docs/DATA_MODEL.md), [AI_PIPELINE](docs/AI_PIPELINE.md), [SECURITY_PRIVACY](docs/SECURITY_PRIVACY.md)) → 7. the matching playbook in [skills.md](skills.md).

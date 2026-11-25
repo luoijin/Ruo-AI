@@ -67,9 +67,9 @@ jobs:
           target: aarch64-linux-android
       - name: Install pinned cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
-      - name: Build SQLCipher Rust library for arm64-v8a
+      - name: Build debug SQLCipher Rust library for arm64-v8a
         working-directory: core-rust
-        run: cargo ndk -t arm64-v8a -o ../android/core/rustbridge/src/main/jniLibs build --release --locked --no-default-features --features sqlcipher
+        run: cargo ndk -t arm64-v8a -o ../android/core/rustbridge/src/main/jniLibs build --locked --no-default-features --features sqlcipher
       - name: Generate Kotlin bindings from the Android library
         working-directory: core-rust
         run: >-
@@ -84,7 +84,7 @@ jobs:
           gradle-version: "9.5.0"
       - name: Build app and instrumented test APKs
         run: gradle -p android --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
-      - name: Stage Gate 2 artifacts
+      - name: Stage debug SQLCipher bridge artifacts
         run: |
           mkdir -p "$RUNNER_TEMP/ruo-ai-gate2/android/core/rustbridge/src/main/jniLibs/arm64-v8a"
           mkdir -p "$RUNNER_TEMP/ruo-ai-gate2/apk"
