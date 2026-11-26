@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -20,7 +21,7 @@ from app.core.database import async_session_maker
 from app.core.errors import AppException
 from app.main import app
 from app.models.all_models import Conversation, EmailOtp, Invite, Message, UsageLog, User
-from app.providers.base import ChatRequest
+from app.providers.base import ChatChunk, ChatRequest
 from app.providers.fake import FakeProvider
 from app.providers.gemini import GeminiProvider
 from app.safety.quotas import check_and_increment_quota
@@ -283,7 +284,8 @@ async def test_conversation_keyset_and_delete_tombstone(client: AsyncClient):
 
     token, _ = create_access_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
-    conversation_ids = [str(uuid.UUID(int=1)), str(uuid.UUID(int=2))]
+    # Unique per run so a rerun against the same database cannot collide on a fixed ID.
+    conversation_ids = sorted([str(uuid.uuid4()), str(uuid.uuid4())])
     for conversation_id in conversation_ids:
         response = await client.post(
             "/v1/conversations",
@@ -639,3 +641,227 @@ async def test_gemini_provider_429_retry(monkeypatch):
     # First attempt hit 429, retry succeeded
     assert call_count == 2
     assert any("Hello from Gemini" in c.text for c in chunks)
+
+
+def _sse_events(body: str) -> list[tuple[str, dict]]:
+    """Parse an SSE body into (event, data) pairs for assertions."""
+    events: list[tuple[str, dict]] = []
+    for block in body.strip().split("\n\n"):
+        event: str | None = None
+        data: dict | None = None
+        for line in block.splitlines():
+            if line.startswith("event: "):
+                event = line[len("event: ") :]
+            elif line.startswith("data: "):
+                data = json.loads(line[len("data: ") :])
+        if event is not None and data is not None:
+            events.append((event, data))
+    return events
+
+
+class _PartialThenFailProvider(FakeProvider):
+    """Emits one delta, then fails, to simulate an interrupted generation."""
+
+    PARTIAL = "INTERRUPTED-PARTIAL-TEXT"
+
+    async def stream_chat(self, request: ChatRequest):
+        yield ChatChunk(text=self.PARTIAL)
+        raise RuntimeError("simulated provider failure")
+
+
+class _EchoingErrorProvider(FakeProvider):
+    """Raises an error whose detail wrongly contains the user's text (worst case for leaks)."""
+
+    async def stream_chat(self, request: ChatRequest):
+        last = request.messages[-1]["content"] if request.messages else ""
+        raise AppException(
+            429,
+            "RATE_LIMIT_EXCEEDED",
+            "Provider Rate Limit",
+            f"upstream echoed: {last}",
+            extra={"retry_after_sec": 7},
+        )
+        yield  # pragma: no cover - keeps this an async generator
+
+
+@pytest.mark.asyncio
+async def test_parent_message_id_is_persisted_for_edit_and_regenerate(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr("app.conversations.service.get_model_provider", lambda: FakeProvider(delay_sec=0))
+    user_id = f"parent_{uuid.uuid4().hex[:8]}"
+    async with async_session_maker() as session:
+        session.add(User(id=user_id, email=f"{user_id}@example.com"))
+        await session.commit()
+
+    token, _ = create_access_token(user_id)
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = str(uuid.uuid4())
+    await client.post("/v1/conversations", headers=headers, json={"conversation_id": conversation_id})
+
+    first_client_msg_id = f"first-{uuid.uuid4().hex}"
+    first = await client.post(
+        f"/v1/conversations/{conversation_id}/messages",
+        headers=headers,
+        json={"client_msg_id": first_client_msg_id, "content": "Original question"},
+    )
+    first_meta = next(data for event, data in _sse_events(first.text) if event == "meta")
+    first_assistant_id = first_meta["assistant_message_id"]
+
+    edited_client_msg_id = f"edit-{uuid.uuid4().hex}"
+    edited = await client.post(
+        f"/v1/conversations/{conversation_id}/messages",
+        headers=headers,
+        json={
+            "client_msg_id": edited_client_msg_id,
+            "content": "Edited question",
+            "parent_message_id": first_assistant_id,
+        },
+    )
+    edited_meta = next(data for event, data in _sse_events(edited.text) if event == "meta")
+
+    messages = (await client.get(f"/v1/conversations/{conversation_id}/messages", headers=headers)).json()
+    by_client_id = {row["client_msg_id"]: row for row in messages}
+    edited_user = by_client_id[edited_client_msg_id]
+    edited_assistant = by_client_id[f"asst_{edited_client_msg_id}"]
+    assert edited_user["parent_message_id"] == first_assistant_id
+    assert edited_assistant["parent_message_id"] == edited_meta["user_message_id"]
+    assert by_client_id[f"asst_{first_client_msg_id}"]["parent_message_id"] == first_meta["user_message_id"]
+    assert len(messages) == 4
+
+
+@pytest.mark.asyncio
+async def test_interrupted_generation_discards_partial_text_and_regenerates_once(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr("app.conversations.service.get_model_provider", lambda: _PartialThenFailProvider())
+    user_id = f"interrupted_{uuid.uuid4().hex[:8]}"
+    async with async_session_maker() as session:
+        session.add(User(id=user_id, email=f"{user_id}@example.com"))
+        await session.commit()
+
+    token, _ = create_access_token(user_id)
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = str(uuid.uuid4())
+    await client.post("/v1/conversations", headers=headers, json={"conversation_id": conversation_id})
+    client_msg_id = f"interrupted-{uuid.uuid4().hex}"
+    request = SendMessageRequest(client_msg_id=client_msg_id, content="Explain photosynthesis.")
+
+    async with async_session_maker() as session:
+        first_body = "".join(
+            [event async for event in stream_chat_messages(session, user_id, conversation_id, request)]
+        )
+    first_events = _sse_events(first_body)
+    assert any(event == "error" and data["code"] == "INTERNAL_ERROR" for event, data in first_events)
+
+    async with async_session_maker() as session:
+        failed_assistant = await session.scalar(select(Message).where(Message.client_msg_id == f"asst_{client_msg_id}"))
+        assert failed_assistant is not None
+        assert failed_assistant.status == "failed"
+        assert failed_assistant.content_md == ""
+
+    monkeypatch.setattr("app.conversations.service.get_model_provider", lambda: FakeProvider(delay_sec=0))
+    async with async_session_maker() as session:
+        retry_body = "".join(
+            [event async for event in stream_chat_messages(session, user_id, conversation_id, request)]
+        )
+    retry_events = _sse_events(retry_body)
+    assert retry_events[0][0] == "meta"
+    assert retry_events[-1][0] == "done"
+    assert "INTERRUPTED-PARTIAL-TEXT" not in retry_body
+
+    async with async_session_maker() as session:
+        rows = (
+            await session.scalars(
+                select(Message).where(Message.client_msg_id.in_([client_msg_id, f"asst_{client_msg_id}"]))
+            )
+        ).all()
+        assert len(rows) == 2
+        regenerated = next(row for row in rows if row.role == "assistant")
+        assert regenerated.status == "complete"
+        assert regenerated.content_md == FakeProvider().sample_response
+        usage = await session.scalar(
+            select(UsageLog).where(UsageLog.user_id == user_id, UsageLog.usage_date == datetime.now(UTC).date())
+        )
+        assert usage is not None
+        assert usage.request_count == 1
+
+
+@pytest.mark.asyncio
+async def test_sse_error_never_echoes_user_content_and_keeps_stable_code(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr("app.conversations.service.get_model_provider", lambda: _EchoingErrorProvider())
+    user_id = f"errorhygiene_{uuid.uuid4().hex[:8]}"
+    async with async_session_maker() as session:
+        session.add(User(id=user_id, email=f"{user_id}@example.com"))
+        await session.commit()
+
+    token, _ = create_access_token(user_id)
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = str(uuid.uuid4())
+    await client.post("/v1/conversations", headers=headers, json={"conversation_id": conversation_id})
+
+    secret_marker = f"SECRET-USER-TEXT-{uuid.uuid4().hex}"
+    response = await client.post(
+        f"/v1/conversations/{conversation_id}/messages",
+        headers=headers,
+        json={"client_msg_id": f"err-{uuid.uuid4().hex}", "content": secret_marker},
+    )
+    assert response.status_code == 200
+    assert secret_marker not in response.text
+    assert token not in response.text
+    errors = [data for event, data in _sse_events(response.text) if event == "error"]
+    assert errors and errors[0]["code"] == "RATE_LIMIT_EXCEEDED"
+    assert errors[0]["retry_after_sec"] == 7
+
+
+@pytest.mark.asyncio
+async def test_dev_otp_code_is_visible_in_logs(client: AsyncClient, caplog):
+    email = f"devotp_{uuid.uuid4().hex[:6]}@example.com"
+    async with async_session_maker() as session:
+        session.add(Invite(allowlisted_email=email))
+        await session.commit()
+
+    with caplog.at_level(logging.INFO, logger="ruo"):
+        response = await client.post("/v1/auth/email/request", json={"email": email})
+    assert response.status_code == 200
+
+    log_text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "[DEV EMAIL SENDER]" in log_text
+    assert email in log_text
+    assert "One-time code:" in log_text
+
+
+@pytest.mark.asyncio
+async def test_gemini_key_is_sent_in_header_not_url(monkeypatch):
+    provider = GeminiProvider(api_key="super-secret-key-value")
+    captured: dict[str, object] = {}
+
+    class MockStreamResponse:
+        status_code = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+        async def aiter_lines(self):
+            chunk = json.dumps({"candidates": [{"content": {"parts": [{"text": "ok"}]}}]})
+            yield f"data: {chunk}"
+
+    class MockClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+        def stream(self, method, url, **kwargs):
+            captured["url"] = url
+            captured["headers"] = kwargs.get("headers", {})
+            return MockStreamResponse()
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: MockClient())
+    async for _ in provider.stream_chat(ChatRequest(messages=[{"role": "user", "content": "Hi"}])):
+        pass
+
+    assert "super-secret-key-value" not in str(captured["url"])
+    assert captured["headers"]["x-goog-api-key"] == "super-secret-key-value"

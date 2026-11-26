@@ -207,7 +207,15 @@ async def verify_google_token_and_auth(
     session: AsyncSession, id_token: str, invite_code: str | None = None
 ) -> AuthResponse:
     # In test or dev mode, support a test token format: test:email@example.com:google_sub_123
+    # This shortcut MUST never be reachable outside development/test, or it becomes an auth bypass.
     if id_token.startswith("test:"):
+        if settings.ENVIRONMENT not in ("development", "test"):
+            raise AppException(
+                401,
+                "INVALID_TOKEN",
+                "Authentication Failed",
+                "Test tokens are not accepted in this environment.",
+            )
         parts = id_token.split(":")
         email = parts[1]
         google_sub = parts[2] if len(parts) > 2 else f"sub_{secrets.token_hex(4)}"
@@ -232,7 +240,8 @@ async def verify_google_token_and_auth(
                         401, "INVALID_TOKEN", "Authentication Failed", "Google token missing email or subject."
                     )
         except httpx.RequestError as e:
-            logger.error(f"Google token verification network error: {e}")
+            # RequestError text can include the request URL, which carries the ID token.
+            logger.error(f"Google token verification network error: {type(e).__name__}")
             raise AppException(
                 503, "AUTH_SERVICE_UNAVAILABLE", "Service Unavailable", "Could not reach Google auth service."
             )

@@ -33,7 +33,10 @@ class GeminiProvider(ModelProvider):
                 "GEMINI_API_KEY is not configured on the backend.",
             )
 
-        url = f"{self.base_url}/models/{model}:streamGenerateContent?alt=sse&key={self.api_key}"
+        # The key travels in the documented x-goog-api-key header, not the URL: URLs end up
+        # in proxy logs, redirects and RequestError messages, so this keeps the secret out of logs.
+        url = f"{self.base_url}/models/{model}:streamGenerateContent?alt=sse"
+        headers = {"x-goog-api-key": self.api_key, "Content-Type": "application/json"}
 
         # Convert messages to Gemini contents structure
         contents = []
@@ -54,7 +57,7 @@ class GeminiProvider(ModelProvider):
         for attempt in range(max_retries + 1):
             try:
                 async with httpx.AsyncClient(timeout=30.0) as client:
-                    async with client.stream("POST", url, json=payload) as response:
+                    async with client.stream("POST", url, headers=headers, json=payload) as response:
                         if response.status_code == 429:
                             if attempt < max_retries:
                                 jitter = random.uniform(0.5, 1.5) * (2**attempt)
@@ -71,10 +74,8 @@ class GeminiProvider(ModelProvider):
                                 )
 
                         if response.status_code != 200:
-                            err_body = await response.aread()
-                            logger.error(
-                                f"Gemini error {response.status_code}: {err_body.decode('utf-8', errors='ignore')}"
-                            )
+                            # Never log the raw provider response body: it can echo prompt text.
+                            logger.error(f"Gemini API returned HTTP status {response.status_code}")
                             raise AppException(
                                 502,
                                 "AI_PROVIDER_ERROR",
@@ -113,7 +114,7 @@ class GeminiProvider(ModelProvider):
                 if attempt < max_retries:
                     await asyncio.sleep(1.0)
                     continue
-                logger.error(f"Gemini connection error: {req_err}")
+                logger.error(f"Gemini connection error: {type(req_err).__name__}")
                 raise AppException(
                     503,
                     "AI_PROVIDER_UNAVAILABLE",
