@@ -24,7 +24,7 @@
 
 **Open PRs:**
 - PR #5 "feat(android): implement Phase 1 Rust bridge" — MERGED (per status; verify merger commit on GitHub)
-- PR #6 (this PR, docs: add Reviewer role) — OPEN, awaiting CI + Reviewer APPROVE
+- PR #9 "docs: add Reviewer role, merge rule and review protocol" — OPEN (https://github.com/luoijin/Ruo-AI/pull/9). Bootstrap: this PR establishes the Reviewer role, but no Reviewer exists yet to issue a `REVIEW VERDICT` APPROVE, so the merge rule cannot be satisfied by a Reviewer. Needs owner review/approval to merge. CI status unconfirmed (not yet verified green).
 
 **Reviewer queue:** none open
 
