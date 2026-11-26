@@ -865,3 +865,94 @@ async def test_gemini_key_is_sent_in_header_not_url(monkeypatch):
 
     assert "super-secret-key-value" not in str(captured["url"])
     assert captured["headers"]["x-goog-api-key"] == "super-secret-key-value"
+
+
+@pytest.mark.asyncio
+async def test_completed_reply_replay_is_meta_one_delta_and_done(client: AsyncClient, monkeypatch):
+    provider = FakeProvider(delay_sec=0)
+    monkeypatch.setattr("app.conversations.service.get_model_provider", lambda: provider)
+
+    user_id = f"replay_{uuid.uuid4().hex[:8]}"
+    async with async_session_maker() as session:
+        session.add(User(id=user_id, email=f"{user_id}@example.com"))
+        await session.commit()
+
+    token, _ = create_access_token(user_id)
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = str(uuid.uuid4())
+    await client.post("/v1/conversations", headers=headers, json={"conversation_id": conversation_id})
+
+    client_msg_id = f"replay-{uuid.uuid4().hex}"
+    request = SendMessageRequest(client_msg_id=client_msg_id, content="What is a fraction?")
+
+    async with async_session_maker() as session:
+        original = _sse_events(
+            "".join([event async for event in stream_chat_messages(session, user_id, conversation_id, request)])
+        )
+    assert [event for event, _ in original][-1] == "done"
+    assert original[0][1]["replayed"] is False
+
+    async with async_session_maker() as session:
+        replayed = _sse_events(
+            "".join([event async for event in stream_chat_messages(session, user_id, conversation_id, request)])
+        )
+
+    # A completed reply replays as exactly meta + one full delta + done.
+    assert [event for event, _ in replayed] == ["meta", "delta", "done"]
+    assert replayed[0][1]["replayed"] is True
+    assert replayed[1][1]["text"] == provider.sample_response
+    assert replayed[2][1]["replayed"] is True
+
+    # No second user message is created and quota is charged only once.
+    async with async_session_maker() as session:
+        rows = (
+            await session.scalars(
+                select(Message).where(Message.client_msg_id.in_([client_msg_id, f"asst_{client_msg_id}"]))
+            )
+        ).all()
+        assert len(rows) == 2
+        usage = await session.scalar(
+            select(UsageLog).where(UsageLog.user_id == user_id, UsageLog.usage_date == datetime.now(UTC).date())
+        )
+        assert usage is not None
+        assert usage.request_count == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_duplicate_first_sends_create_one_pair_and_charge_once(client: AsyncClient, monkeypatch):
+    provider = FakeProvider(delay_sec=0.02)
+    monkeypatch.setattr("app.conversations.service.get_model_provider", lambda: provider)
+
+    user_id = f"dup_{uuid.uuid4().hex[:8]}"
+    async with async_session_maker() as session:
+        session.add(User(id=user_id, email=f"{user_id}@example.com"))
+        await session.commit()
+
+    token, _ = create_access_token(user_id)
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = str(uuid.uuid4())
+    await client.post("/v1/conversations", headers=headers, json={"conversation_id": conversation_id})
+
+    client_msg_id = f"dup-{uuid.uuid4().hex}"
+    request = SendMessageRequest(client_msg_id=client_msg_id, content="Same message, sent twice.")
+
+    async def consume() -> str:
+        async with async_session_maker() as session:
+            return "".join([event async for event in stream_chat_messages(session, user_id, conversation_id, request)])
+
+    bodies = await asyncio.gather(consume(), consume())
+
+    # At least one send completes; a racing duplicate never creates another pair.
+    assert any("event: done" in body for body in bodies)
+    async with async_session_maker() as session:
+        rows = (
+            await session.scalars(
+                select(Message).where(Message.client_msg_id.in_([client_msg_id, f"asst_{client_msg_id}"]))
+            )
+        ).all()
+        assert len(rows) == 2
+        usage = await session.scalar(
+            select(UsageLog).where(UsageLog.user_id == user_id, UsageLog.usage_date == datetime.now(UTC).date())
+        )
+        assert usage is not None
+        assert usage.request_count == 1
