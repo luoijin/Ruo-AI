@@ -35,6 +35,7 @@ Every merged change updates this file under `[Unreleased]`.
 - Added multi-agent Phase 1 status docs: `docs/PHASE-1-STATUS.md`, per-agent status files under `docs/status/`, and the updated Phase 1 Definition of Done and command cheat sheet in `AGENTS.md`.
 - Added the Gate 4A launcher, localized Compose placeholder routes, design-token theme, and Hilt application setup without auth or chat functionality.
 - Added stable debug-only signing from local properties or environment; CI confines the key to the Android build step, verifies APK fingerprints, deletes its temporary copy, and skips APK uploads when secrets are unavailable.
+- Added Reviewer role (independent code/PR review): roles table row, merge rule, review protocol, worktree list and session-start check in `docs/MULTI_AGENT.md`; new `docs/status/reviewer.md`; no PR merges without an APPROVE verdict for its head commit. Recorded in `docs/PHASE-1-STATUS.md`.
 
 ### Changed
 - Removed unverified default model name from `GEMINI_FALLBACK_MODEL` (remains unconfigured until verified).
