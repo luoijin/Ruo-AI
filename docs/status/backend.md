@@ -8,7 +8,7 @@
 - Google OAuth clients configured; backend verifies GOOGLE_CLIENT_ID
 - Email one-time code verification flow approved
 
-**Open PRs:** Security-hardening PR (branch `agent/backend/phase1-hardening`)
+**Open PRs:** PR #11 (branch `agent/backend/gate3-retry-tests`); PR #10 hardening MERGED 2026-11-26
 
 **Progress:**
 - Committed Stage A hardening: dev-only `test:` token guard, Gemini key moved to `x-goog-api-key` header, no raw provider bodies/network text in logs. Added tests for error hygiene, interrupted-generation regenerate, `parent_message_id`, dev OTP log, and header auth.
@@ -17,6 +17,13 @@
 
 **Blockers:** None
 
-**Requests to others:** Lead: review contract-gaps reconciliation (task 2) scope against `PHASE-1-STATUS.md`.
+**Progress (task 2):**
+- Verified main already implements client-generated conversation IDs, idempotent create, keyset sync + tombstones, `parent_message_id`, mid-stream retry and failed-stream regeneration; no production code was missing.
+- Added Postgres tests for the two untested guarantees: completed replay is exactly `meta` + one full `delta` + `done`; two concurrent first sends create one pair and charge quota once.
+- Local evidence (host Windows, Python 3.14, fresh Postgres 16.16 db `ruo_gate3_tests`, `ENVIRONMENT=test`): `17 passed, 74 warnings in 5.82s`; `ruff check .` = All checks passed; `ruff format --check .` = 28 files already formatted. CI pending on PR #11.
 
-**Next step:** task 2 (message `content` field + mid-stream retry semantics) once the hardening PR is up.
+**Requests to others:**
+- Lead: edit `docs/API_CONTRACT.md` to match the Pydantic models (full mismatch list in PR #11): message responses expose `content_md`, not `content`; `MessageItem` fields and stable SSE error codes are not enumerated; replayed `done` omits `usage`; list defaults are not stated.
+- Lead/Rust/Android: document the backend-to-client error mapping `RATE_LIMIT_EXCEEDED` -> `RATE_LIMITED` (daily quota `QUOTA_EXCEEDED` stays `QUOTA_EXCEEDED`).
+
+**Next step:** latency investigation (task 7) after PR #11 is reviewed.
