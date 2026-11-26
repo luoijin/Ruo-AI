@@ -60,6 +60,9 @@ Every merged change updates this file under `[Unreleased]`.
 
 ### Security
 - Enforced strict startup validation outside `ENVIRONMENT=development` to reject empty or dev placeholder values for `JWT_SECRET_KEY` and `GOOGLE_CLIENT_ID`.
+- Rejected `test:` ID-token shortcuts outside `ENVIRONMENT=test`/`development`, so the dev-only auth path cannot be used as an auth bypass in production.
+- Sent the Gemini API key in the documented `x-goog-api-key` header instead of the URL, and stopped logging raw provider response bodies and network-error text so keys and prompt content cannot leak into logs.
+- Added coverage for SSE error hygiene (no user text/token echo), interrupted-generation discard-and-regenerate, `parent_message_id` persistence, dev OTP visibility, and header-based Gemini auth.
 
 ### Removed
 - Removed unused, unenforced `HOURLY_RATE_LIMIT` configuration variable.
